@@ -189,6 +189,9 @@ public class Numerics {
 	public static final float max( float a, float b, float c, float d, float e) {
 		return max(a,max(b,max(c,max(d,e))));
 	}
+	public static final float max( float a, float b, float c, float d, float e, float f) {
+		return max(a,max(b,max(c,max(d,max(e,f)))));
+	}
 	public static final double max( double[] val) {
 		double max = val[0];
 		for (int n=1;n<val.length;n++) if (val[n]>max) max = val[n];

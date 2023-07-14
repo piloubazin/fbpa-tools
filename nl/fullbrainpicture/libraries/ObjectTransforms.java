@@ -1200,7 +1200,7 @@ public class ObjectTransforms {
      * (!assumes a 6D array with opposite coordinates stacked one after the other)
      * 
      */
-    private static final float minimumMarchingDistance(float[] val, boolean[] flag) {
+    public static final float minimumMarchingDistance(float[] val, boolean[] flag) {
 
         float s, s2; // s = a + b +c; s2 = a*a + b*b +c*c
         float tmp;
