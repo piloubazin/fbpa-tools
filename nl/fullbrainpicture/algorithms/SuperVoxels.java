@@ -7,6 +7,7 @@ import nl.fullbrainpicture.libraries.*;
 import org.apache.commons.math3.util.FastMath;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 
+import java.util.HashSet;
 
 /*
  * @author Pierre-Louis Bazin
@@ -23,6 +24,7 @@ public class SuperVoxels {
 	
 	private float scaling;
 	private float noise;
+	private int nngb = 26;
 
 	private int[] parcelImage;
 	private float[] rescaledImage;
@@ -105,12 +107,28 @@ public class SuperVoxels {
 	    count = new int[nsxyz];
 	    
 	    // init supervoxel centroids
-	    float[][] centroid = new float[3][nsxyz];
+	    // include all supervoxels with non-zero values inside
+		float[][] centroid = new float[3][nsxyz];
 	    for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
 	        int xyzs = xs+nsx*ys+nsx*nsy*zs;
-	        centroid[X][xyzs] = xs*scaling + 0.5f*scaling;
-	        centroid[Y][xyzs] = ys*scaling + 0.5f*scaling;
-	        centroid[Z][xyzs] = zs*scaling + 0.5f*scaling;
+	        centroid[X][xyzs] = 0.0f;
+	        centroid[Y][xyzs] = 0.0f;
+	        centroid[Z][xyzs] = 0.0f;
+	        count[xyzs] = 0;
+	        for (int dx=0;dx<scaling;dx++) for (int dy=0;dy<scaling;dy++) for (int dz=0;dz<scaling;dz++) {
+	            int xyz = Numerics.floor(xs*scaling)+dx+nx*(Numerics.floor(ys*scaling)+dy)+nx*ny*(Numerics.floor(zs*scaling)+dz);
+	            if (mask[xyz]) {
+                    centroid[X][xyzs] += Numerics.floor(xs*scaling) + dx;
+                    centroid[Y][xyzs] += Numerics.floor(ys*scaling) + dy;
+                    centroid[Z][xyzs] += Numerics.floor(zs*scaling) + dz;
+                    count[xyzs]++;
+                }
+            }
+            if (count[xyzs]>0) {
+                centroid[X][xyzs] /= count[xyzs];
+                centroid[Y][xyzs] /= count[xyzs];
+                centroid[Z][xyzs] /= count[xyzs];
+	        }
 	    }
 	    
 	    // init: search for voxel with lowest gradient within the region instead? (TODO)
@@ -139,54 +157,63 @@ public class SuperVoxels {
 	            }
 	        }
 	    }
+	    // Estimate approximate min,max from sampled grid values
+	    float Imin = 1e9f;
+	    float Imax = -1e9f;
+        for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
+		    int xyzs = xs+nsx*ys+nsx*nsy*zs;
+	        
+		    int x = Numerics.bounded(Numerics.floor(centroid[X][xyzs]),1,nx-2);
+	        int y = Numerics.bounded(Numerics.floor(centroid[Y][xyzs]),1,ny-2);
+	        int z = Numerics.bounded(Numerics.floor(centroid[Z][xyzs]),1,nz-2);
+	        int xyz = x+nx*y+nx*ny*z;	        
+	        if (mask[xyz]) {
+	            if (inputImage[xyz]<Imin) Imin = inputImage[xyz];
+	            if (inputImage[xyz]>Imax) Imax = inputImage[xyz];
+	        }
+	    }
+	    // normalize the noise parameter by intensity, but not by distance (-> same speed indep of scale)
+	    System.out.println("intensity scale: ["+Imin+", "+Imax+"]");
+	    if (Imax>Imin) {
+	        noise = noise*noise*(Imax-Imin)*(Imax-Imin);
+	    }
+	    
 	    // start a voxel heap at each center
-		BinaryHeap4D heap = new BinaryHeap4D(nx*ny+ny*nz+nz*nx, BinaryHeap4D.MINTREE);
+	    BinaryHeap4D heap = new BinaryHeap4D(nx*ny+ny*nz+nz*nx, BinaryHeap4D.MINTREE);
 		boolean[] processed = new boolean[nx*ny*nz];
 		for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
 		    int xyzs = xs+nsx*ys+nsx*nsy*zs;
-	        int x0 = Numerics.bounded(Numerics.floor(centroid[X][xyzs]),1,nx-2);
-	        int y0 = Numerics.bounded(Numerics.floor(centroid[Y][xyzs]),1,ny-2);
-	        int z0 = Numerics.bounded(Numerics.floor(centroid[Z][xyzs]),1,nz-2);
-	        int xyz0 = x0+nx*y0+nx*ny*z0;
-	        if (mask[xyz0]) {
+	        count[xyzs]=0;
+	        
+	        int x = Numerics.bounded(Numerics.floor(centroid[X][xyzs]),1,nx-2);
+	        int y = Numerics.bounded(Numerics.floor(centroid[Y][xyzs]),1,ny-2);
+	        int z = Numerics.bounded(Numerics.floor(centroid[Z][xyzs]),1,nz-2);
+	        int xyz = x+nx*y+nx*ny*z;	        
+	        if (mask[xyz]) {
 	            // set as starting point
-	            parcelImage[xyz0] = xyzs+1;
-	            rescaledImage[xyzs] = inputImage[xyz0];
+	            parcelImage[xyz] = xyzs+1;
+	            rescaledImage[xyzs] = inputImage[xyz];
 	            count[xyzs] = 1;
-	            processed[xyz0] = true;
+	            processed[xyz] = true;
 	            
 	            // add neighbors to the tree
-	            for (byte k = 0; k<6; k++) {
-	                switch (k) {
-	                    case 0: x0++;
-	                    case 1: x0--;
-	                    case 2: y0++;
-	                    case 3: y0--;
-	                    case 4: z0++;
-	                    case 5: z0--;
-                    }
-                    // exclude zero as mask
-                    if (mask[x0+nx*y0+nx*ny*z0]) {
+	            for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+	                if (dx*dx+dy*dy+dz*dz==1 && x+dx>=0 && y+dy>=0 && z+dz>=0 && x+dx<nx && y+dy<ny && z+dz<nz) {
+                        int xyznb = x+dx+nx*(y+dy)+nx*ny*(z+dz);
+                         // exclude zero as mask
+                        if (mask[xyznb]) {
                         
-                        // distance function
-                        float dist = (x0-centroid[X][xyzs])*(x0-centroid[X][xyzs])
-                                    +(y0-centroid[Y][xyzs])*(y0-centroid[Y][xyzs])
-                                    +(z0-centroid[Z][xyzs])*(z0-centroid[Z][xyzs]);
+                            // distance function
+                            float dist = (x+dx-centroid[X][xyzs])*(x+dx-centroid[X][xyzs])
+                                        +(y+dy-centroid[Y][xyzs])*(y+dy-centroid[Y][xyzs])
+                                        +(z+dz-centroid[Z][xyzs])*(z+dz-centroid[Z][xyzs]);
                                     
-                        float contrast = (inputImage[x0+nx*y0+nx*ny*z0]-rescaledImage[xyzs])
-                                        *(inputImage[x0+nx*y0+nx*ny*z0]-rescaledImage[xyzs]);
+                            float contrast = (inputImage[xyznb]-rescaledImage[xyzs])
+                                            *(inputImage[xyznb]-rescaledImage[xyzs]);
                                         
-                        heap.addValue(noise*dist+contrast, x0,y0,z0, xyzs+1);
-                    }
-                    switch (k) {
-	                    case 0: x0--;
-	                    case 1: x0++;
-	                    case 2: y0--;
-	                    case 3: y0++;
-	                    case 4: z0--;
-	                    case 5: z0++;
-                    }
-                    
+                            heap.addValue(noise*dist+contrast, x+dx,y+dy,z+dz, xyzs+1);
+                        }
+                    }                    
 	            }
 	        }
 	    }
@@ -220,35 +247,23 @@ public class SuperVoxels {
 	        processed[xyz]=true;
 			
             // add neighbors to the tree
-            for (byte k = 0; k<6; k++) {
-                switch (k) {
-                    case 0: if (x<nx-1) x++;
-                    case 1: if (x>0) x--;
-                    case 2: if (y<ny-1) y++;
-                    case 3: if (y>0) y--;
-                    case 4: if (z<nz-1) z++;
-                    case 5: if (z>0) z--;
-                }
-                // exclude zero as mask
-                if (mask[x+nx*y+nx*ny*z] && !processed[x+nx*y+nx*ny*z]) {
+            for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+	            if (dx*dx+dy*dy+dz*dz==1 && x+dx>=0 && y+dy>=0 && z+dz>=0 && x+dx<nx && y+dy<ny && z+dz<nz) {
+                    int xyznb = x+dx+nx*(y+dy)+nx*ny*(z+dz);
+
+                    // exclude zero as mask
+                    if (mask[xyznb] && !processed[xyznb]) {
                     
-                    // distance function
-                    float dist = (x-centroid[X][xyzs])*(x-centroid[X][xyzs])
-                                +(y-centroid[Y][xyzs])*(y-centroid[Y][xyzs])
-                                +(z-centroid[Z][xyzs])*(z-centroid[Z][xyzs]);
+                        // distance function
+                        float dist = (x+dx-centroid[X][xyzs])*(x+dx-centroid[X][xyzs])
+                                    +(y+dy-centroid[Y][xyzs])*(y+dy-centroid[Y][xyzs])
+                                    +(z+dz-centroid[Z][xyzs])*(z+dz-centroid[Z][xyzs]);
                                 
-                    float contrast = (inputImage[x+nx*y+nx*ny*z]-rescaledImage[xyzs])
-                                    *(inputImage[x+nx*y+nx*ny*z]-rescaledImage[xyzs]);
-                                    
-                    heap.addValue(noise*dist+contrast, x,y,z, xyzs+1);
-                }
-                switch (k) {
-                    case 0: if (x>0) x--;
-                    case 1: if (x<nx-1) x++;
-                    case 2: if (y>0) y--;
-                    case 3: if (y<ny-1) y++;
-                    case 4: if (z>0) z--;
-                    case 5: if (z<nz-1) z++;
+                        float contrast = (inputImage[xyznb]-rescaledImage[xyzs])
+                                        *(inputImage[xyznb]-rescaledImage[xyzs]);
+                                        
+                        heap.addValue(noise*dist+contrast, x+dx,y+dy,z+dz, xyzs+1);
+                    }
                 }
             }
 		}
@@ -275,15 +290,18 @@ public class SuperVoxels {
 		            memsImage[xyz] = levelset[xyz];
 		        }
 		    }
-		}else if (outputs.equals("sharpness")) {
+		} else if (outputs.equals("neighbor")) {
 		    growBoundaries();
-		    fitBoundarySigmoid();
 		    memsImage = new float[nxyz];
 		    for (int xyz=0;xyz<nxyz;xyz++) {
 		        if (parcelImage[xyz]>0) {
-		            memsImage[xyz] = levelset[xyz];
+		            memsImage[xyz] = neighbor[xyz];
 		        }
 		    }
+		} else {
+		    System.out.println("Estimate boundary sharpness");
+		    growBoundaries();
+            fitBoundarySigmoid();
 		}
 	}
 	
@@ -320,7 +338,7 @@ public class SuperVoxels {
         	    // search for boundaries
                 for (byte k = 0; k<6; k++) {
                     int xyzn = ObjectTransforms.fastMarchingNeighborIndex(k, xyz, nx, ny, nz);
-                    if (cmask[xyzn] && parcelImage[xyzn]!=parcelImage[xyz]) {
+                    if (cmask[xyzn] && parcelImage[xyz]>0 && parcelImage[xyzn]>0 && parcelImage[xyzn]!=parcelImage[xyz]) {
                         // we assume the levelset value is correct at the boundary
 					
                         // add to the heap with previous value
@@ -379,98 +397,356 @@ public class SuperVoxels {
 	    // we assume we have the distance to the boundary and the label of the closest supervoxel
 	    // now we fit a sigmoid to intensity, distance for each boundary
 	    // the sigmoid has three parameters: height (contrast), slope (sharpness) and offset (true boundary)
+	    
+	    // we assume a probabilistic prior separation into 3 regions, with the boundary being centered
+	    // at zero and the slope being two voxels in spread
+	    // thus inside is 1-exp(-|lvl|/d0), and boundary is exp(-|lvl|/d0)
+	    
 	    float[] interior = new float[nsxyz];
 	    float[] incount = new float[nsxyz];
 	    
-	    // boundaries
-	    for (int xyz=0;xyz<nx;xyz++) if (parcelImage[xyz]>0) {
+	    float delta = 0.001f;
+	    float delta0 = 0.1f;
+	    float dist0 = 2.0f;
+	    //int nngb = 30;
+	    
+	    // boundaries: use all the interior of a given region
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
 	        int label = parcelImage[xyz];
 	        
-	        interior[label-1] += levelset[xyz]*inputImage[xyz];
-	        incount[label-1] += levelset[xyz];
+	        interior[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*inputImage[xyz];
+	        incount[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)));
 	    }
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
 	        if (incount[xyzs]>0) interior[xyzs] /= incount[xyzs];
 	    }
 	    
-	    float[][] slope = new float[3][nsxyz];
-	    float[][] offset = new float[3][nsxyz];
-	    float[][] bdcount = new float[3][nsxyz];
-
-	    // offset
-	    for (int xyz=0;xyz<nx;xyz++) if (parcelImage[xyz]>0) {
+	    // boundary SNR
+	    float[] noise = new float[nsxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
 	        int label = parcelImage[xyz];
-	        int ngblb = neighbor[xyz];
-	    
-	        float weight = Numerics.bounded((parcelImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                      *Numerics.bounded((interior[label-1]-parcelImage[xyz])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f);
-	        if (ngblb==label+1) {
-	            offset[X][label-1] += levelset[xyz]*weight;
-	            bdcount[X][label-1] += weight;                                          
-	        } else if (ngblb==label+nsx) {
-	            offset[Y][label-1] += levelset[xyz]*weight;
-	            bdcount[Y][label-1] += weight;                                          
-	        } else if (ngblb==label+nsx*nsy) {
-	            offset[Z][label-1] += levelset[xyz]*weight;
-	            bdcount[Z][label-1] += weight;                                          
-	        } else if (ngblb==label-1) {
-	            offset[X][ngblb-1] -= levelset[xyz]*weight;
-	            bdcount[X][ngblb-1] += weight;   
-	        } else if (ngblb==label-nsx) {
-	            offset[Y][ngblb-1] -= levelset[xyz]*weight;
-	            bdcount[Y][ngblb-1] += weight;                                          
-	        } else if (ngblb==label-nsx*nsy) {
-	            offset[Z][ngblb-1] -= levelset[xyz]*weight;
-	            bdcount[Z][ngblb-1] += weight;                                          
-	        }
+	        
+	        noise[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*Numerics.square(inputImage[xyz]-interior[label-1]);
 	    }
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<3;c++) {
-	        if (bdcount[c][xyzs]>0) offset[c][xyzs] /= bdcount[c][xyzs];
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) noise[xyzs] = (float)FastMath.sqrt(noise[xyzs]/incount[xyzs]);
 	    }
 	    
-	    // slope
-	    for (int xyz=0;xyz<nx;xyz++) if (parcelImage[xyz]>0) {
+	    // use HashSets to count the number of needed neighbors per location
+	    HashSet[] ngbset = new HashSet[nsxyz];
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        ngbset[xyzs] = new HashSet(nngb);
+	    }
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
 	        int label = parcelImage[xyz];
 	        int ngblb = neighbor[xyz];
 	        
-	        float weight = Numerics.bounded((parcelImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                      *Numerics.bounded((interior[label-1]-parcelImage[xyz])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f);
-	        if (ngblb==label+1) {
-	            slope[X][label-1] += Numerics.bounded((parcelImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                                /(levelset[xyz]-offset[X][xyz])*weight;
-	        } else if (ngblb==label+nsx) {
-	            slope[Y][label-1] += Numerics.bounded((parcelImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                                /(levelset[xyz]-offset[Y][xyz])*weight;
-	        } else if (ngblb==label+nsx*nsy) {
-	            slope[Z][label-1] += Numerics.bounded((parcelImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                                /(levelset[xyz]-offset[Z][xyz])*weight;
-	        } else if (ngblb==label-1) {
-	            slope[X][ngblb-1] += Numerics.bounded((interior[label-1]-parcelImage[xyz])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                                /(levelset[xyz]-offset[X][xyz])*weight;
-	        } else if (ngblb==label-nsx) {
-	            slope[Y][ngblb-1] += Numerics.bounded((interior[label-1]-parcelImage[xyz])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                                /(levelset[xyz]-offset[Y][xyz])*weight;
-	        } else if (ngblb==label-nsx*nsy) {
-	            slope[Z][ngblb-1] += Numerics.bounded((interior[label-1]-parcelImage[xyz])/(interior[label-1]-interior[ngblb-1]), 0.0f, 1.0f)
-	                                /(levelset[xyz]-offset[Z][xyz])*weight;
+	        ngbset[label-1].add(ngblb);
+	    }
+	    // count the number of neighbors per region??
+	    // must build a full list...
+	    int[][] ngblist = new int[nsxyz][];
+	    int[][] bdcount = new int[nsxyz][];
+	    float[][] slope = new float[nsxyz][];
+	    float[][] dist = new float[nsxyz][];
+
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	         ngblist[xyzs] = new int[ngbset[xyzs].size()];
+	         bdcount[xyzs] = new int[ngbset[xyzs].size()];
+	         slope[xyzs] = new float[ngbset[xyzs].size()];
+	         dist[xyzs] = new float[ngbset[xyzs].size()];
+	    }
+	    
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcelImage[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+	        boolean found=false;
+	        int last = ngblist[label-1].length;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                found=true;
+	                bdcount[label-1][n]++;
+	                n=ngblist[label-1].length;
+	            } else if (ngblist[label-1][n]==0) {
+	                last=n;
+	                n=ngblist[label-1].length;
+	            }
+	        }
+	        if (!found && last<nngb) {
+	            ngblist[label-1][last] = ngblb;
+	            bdcount[label-1][last] = 1;
 	        }
 	    }
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<3;c++) {
-	        if (bdcount[c][xyzs]>0) slope[c][xyzs] /= bdcount[c][xyzs];
+	    
+	    
+	    // offset not recomputed for simplicity, but boundary count is still relevant?
+	    // maybe count directly rather
+	    /*
+	    float[][] offset = new float[nngb][nsxyz];
+	    float[][] bdcount = new float[nngb][nsxyz];
+	    
+	    // offset
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcelImage[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+            float wgty = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)
+                        *Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
+                
+	        // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<nngb;n++) {
+	             if (ngblb==ngblist[n][label-1]) {
+	                 loc=n;
+	                 n=nngb;
+	             }
+	        }
+	        if (loc>-1) {
+                offset[loc][label-1] += levelset[xyz]*wgtx*wgty;
+                bdcount[loc][label-1] += wgtx*wgty;    
+            }
+            
+            // also in the neighbor's for negative values
+            loc = -1;
+	        for (int n=0;n<nngb;n++) {
+	             if (label==ngblist[n][ngblb-1]) {
+	                 loc=n;
+	                 n=nngb;
+	             }
+	        }
+	        if (loc>-1) {
+                offset[loc][ngblb-1] += -levelset[xyz]*wgtx*wgty;
+                bdcount[loc][ngblb-1] += wgtx*wgty;    
+            }
+	    }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<nngb;c++) {
+	        if (bdcount[c][xyzs]>0) offset[c][xyzs] /= bdcount[c][xyzs];
+	    }
+	    */
+	    
+	    // slope
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcelImage[xyz];
+	        int ngblb = neighbor[xyz];
+	        	        
+            float wgty = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)
+                        *Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
+                
+	        // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1) {
+	            slope[label-1][loc] += (2.0f*Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)-1.0f)
+                                            *wgtx*wgty;
+                    
+                //dist[loc][label-1] += (levelset[xyz]-offset[loc][label-1])*wgtx*wgty;
+                dist[label-1][loc] += levelset[xyz]*wgtx*wgty;
+            }                      
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1) {
+                slope[ngblb-1][loc] += -(2.0f*Numerics.bounded((inputImage[xyz]-interior[label-1])/(interior[ngblb-1]-interior[label-1]), delta, 1.0f-delta)-1.0f)
+                                            *wgtx*wgty;
+                                            
+                //dist[loc][ngblb-1] += -(-levelset[xyz]-offset[loc][ngblb-1])*wgtx*wgty;
+                dist[ngblb-1][loc] += levelset[xyz]*wgtx*wgty;
+            }
+            
+        }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
+	        if (dist[xyzs][c]>0) slope[xyzs][c] = 0.5f*slope[xyzs][c]/dist[xyzs][c];
 	    }
 	        
 	    // outputs?
+	    System.out.println("Output map: "+outputs);
 	    memsImage = new float[nxyz];
-		    
-	    for (int xyz=0;xyz<nx;xyz++) if (parcelImage[xyz]>0) {
-	        int label = parcelImage[xyz];
-	        int ngblb = neighbor[xyz];
-	        
-	        if (levelset[xyz]<1.0f) {
-	            memsImage[xyz] = Numerics.max(slope[X][label-1],slope[Y][label-1],slope[Z][label-1],
-	                                          slope[X][ngblb-1],slope[Y][ngblb-1],slope[Z][ngblb-1]);
-	        }
-	    }
+	    if (outputs.equals("boundary")) {	    
+	        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    // find the neighbor in the list
+                    int loc = -1;
+                    for (int n=0;n<ngblist[label-1].length;n++) {
+                         if (ngblb==ngblist[label-1][n]) {
+                             loc=n;
+                             n=ngblist[label-1].length;
+                         }
+                    }
+                    memsImage[xyz] = loc;
+                }
+            }
+        } else
+	    if (outputs.equals("baseline")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                memsImage[xyz] = interior[label-1];
+            }
+        } else
+	    if (outputs.equals("count")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    // find the neighbor in the list
+                    int loc = -1;
+                    for (int n=0;n<ngblist[label-1].length;n++) {
+                         if (ngblb==ngblist[label-1][n]) {
+                             loc=n;
+                             n=ngblist[label-1].length;
+                         }
+                    }
+                    if (loc>-1) 
+                        memsImage[xyz] = bdcount[label-1][loc];
+                }
+            }
+        } else
+	    if (outputs.equals("contrast")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    memsImage[xyz] = Numerics.abs(interior[label-1]-interior[ngblb-1]);
+                }
+            }
+        } else
+	    if (outputs.equals("noise")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                memsImage[xyz] = noise[label-1];
+            }
+        } else
+	    if (outputs.equals("CNR")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    memsImage[xyz] = 2.0f*Numerics.abs(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1]);
+                }
+            }
+        } else
+	    if (outputs.equals("weights")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                float wgty = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)
+	                        *Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+                float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
+                    
+                memsImage[xyz] = wgtx*wgty;
+            }
+        } else
+        /* no offset for simplicity
+	    if (outputs.equals("offset")) {	    
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    // find the neighbor in the list
+                    int loc = -1;
+                    for (int n=0;n<nngb;n++) {
+                         if (ngblb==ngblist[n][label-1]) {
+                             loc=n;
+                             n=nngb;
+                         }
+                    }
+                    if (loc>-1)
+                        memsImage[xyz] = offset[loc][label-1];
+                }
+            }
+        } else
+        */
+	    if (outputs.equals("slope")) {	    
+	        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    // find the neighbor in the list
+                    int loc = -1;
+                    for (int n=0;n<ngblist[label-1].length;n++) {
+                         if (ngblb==ngblist[label-1][n]) {
+                             loc=n;
+                             n=ngblist[label-1].length;
+                         }
+                    }
+                    if (loc>-1)
+                        memsImage[xyz] = slope[label-1][loc];
+                }
+            }
+        } else
+	    if (outputs.equals("posterior")) {	    
+	        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    // find the neighbor in the list
+                    int loc = -1;
+                    for (int n=0;n<ngblist[label-1].length;n++) {
+                         if (ngblb==ngblist[label-1][n]) {
+                             loc=n;
+                             n=ngblist[label-1].length;
+                         }
+                    }
+                    if (loc>-1) {
+                        // probability of existence: CNR>0.5, N_boundary>scaling
+                        double pcnr = 1.0-FastMath.exp(-0.5f*Numerics.square(4.0f*(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1])));
+                        double pbnd = 1.0-FastMath.exp(-0.5f*Numerics.square(bdcount[label-1][loc]/scaling));
+                        memsImage[xyz] = (float)FastMath.sqrt(pcnr*pbnd);
+                    }
+                }
+            }
+        } else
+	    if (outputs.equals("sharpness")) {	    
+	        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcelImage[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (levelset[xyz]<1.0f) {
+                    // find the neighbor in the list
+                    int loc = -1;
+                    for (int n=0;n<ngblist[label-1].length;n++) {
+                         if (ngblb==ngblist[label-1][n]) {
+                             loc=n;
+                             n=ngblist[label-1].length;
+                         }
+                    }
+                    if (loc>-1) {
+                        // probability of existence: CNR>0.5, N_boundary>scaling
+                        double pcnr = 1.0-FastMath.exp(-0.5f*Numerics.square(4.0f*(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1])));
+                        double pbnd = 1.0-FastMath.exp(-0.5f*Numerics.square(bdcount[label-1][loc]/scaling));
+                        if (pcnr*pbnd>0.25) {
+                            memsImage[xyz] = Numerics.abs(slope[label-1][loc]);
+                        }
+                    }
+                }
+            }
+        }
 	    return;
 	}
 
