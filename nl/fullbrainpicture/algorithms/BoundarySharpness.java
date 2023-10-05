@@ -24,6 +24,7 @@ public class BoundarySharpness {
 	
 	private float scaling;
 	private float noise;
+	private int iterations=10;
 	private int nngb = 26;
 
 	private float[] parcelImage;
@@ -71,6 +72,7 @@ public class BoundarySharpness {
 			
 	public final void setScalingFactor(float val) { scaling = val; }
 	public final void setNoiseLevel(float val) { noise = val; }
+	public final void setIterations(int val) { iterations = val; }
 	
 	// create outputs
 	public final float[] getParcelImage() { return parcelImage; }
@@ -96,8 +98,8 @@ public class BoundarySharpness {
         growBoundaries();
         
         System.out.println("Estimate boundary sharpness");
-        //fitBoundarySigmoid();
-        fitRecursiveBoundarySigmoid();
+        if (iterations<0) fitBasicBoundarySigmoid();
+        else fitRecursiveBoundarySigmoid(iterations);
 	}
 	
 	public void supervoxelParcellation() {
@@ -374,196 +376,7 @@ public class BoundarySharpness {
 		return;
 	}
 	
-	public void fitBoundarySigmoid() {
-	    // we assume we have the distance to the boundary and the label of the closest supervoxel
-	    // now we fit a sigmoid to intensity, distance for each boundary
-	    // the sigmoid has three parameters: height (contrast), slope (sharpness) and offset (true boundary)
-	    
-	    // we assume a probabilistic prior separation into 3 regions, with the boundary being centered
-	    // at zero and the slope being two voxels in spread
-	    // thus inside is 1-exp(-|lvl|/d0), and boundary is exp(-|lvl|/d0)
-	    
-	    float[] interior = new float[nsxyz];
-	    float[] incount = new float[nsxyz];
-	    
-	    float delta = 0.001f;
-	    float delta0 = 0.1f;
-	    float dist0 = 2.0f;
-	    //int nngb = 30;
-	    
-	    // boundaries: use all the interior of a given region
-	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
-	        int label = parcel[xyz];
-	        
-	        interior[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*inputImage[xyz];
-	        incount[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)));
-	    }
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
-	        if (incount[xyzs]>0) interior[xyzs] /= incount[xyzs];
-	    }
-	    
-	    // boundary SNR
-	    float[] noise = new float[nsxyz];
-	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
-	        int label = parcel[xyz];
-	        
-	        noise[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*Numerics.square(inputImage[xyz]-interior[label-1]);
-	    }
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
-	        if (incount[xyzs]>0) noise[xyzs] = (float)FastMath.sqrt(noise[xyzs]/incount[xyzs]);
-	    }
-	    
-	    // use HashSets to count the number of needed neighbors per location
-	    HashSet[] ngbset = new HashSet[nsxyz];
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
-	        ngbset[xyzs] = new HashSet(nngb);
-	    }
-	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
-	        int label = parcel[xyz];
-	        int ngblb = neighbor[xyz];
-	        
-	        ngbset[label-1].add(ngblb);
-	    }
-	    // count the number of neighbors per region??
-	    // must build a full list...
-	    int[][] ngblist = new int[nsxyz][];
-	    int[][] bdcount = new int[nsxyz][];
-	    float[][] slope = new float[nsxyz][];
-	    float[][] dist = new float[nsxyz][];
-
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
-	         ngblist[xyzs] = new int[ngbset[xyzs].size()];
-	         bdcount[xyzs] = new int[ngbset[xyzs].size()];
-	         slope[xyzs] = new float[ngbset[xyzs].size()];
-	         dist[xyzs] = new float[ngbset[xyzs].size()];
-	    }
-	    
-	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
-	        int label = parcel[xyz];
-	        int ngblb = neighbor[xyz];
-	        
-	        boolean found=false;
-	        int last = ngblist[label-1].length;
-	        for (int n=0;n<ngblist[label-1].length;n++) {
-	            if (ngblb==ngblist[label-1][n]) {
-	                found=true;
-	                bdcount[label-1][n]++;
-	                n=ngblist[label-1].length;
-	            } else if (ngblist[label-1][n]==0) {
-	                last=n;
-	                n=ngblist[label-1].length;
-	            }
-	        }
-	        if (!found && last<nngb) {
-	            ngblist[label-1][last] = ngblb;
-	            bdcount[label-1][last] = 1;
-	        }
-	    }
-	    	    
-	    // offset not recomputed for simplicity, but boundary count is still relevant?
-	    // maybe count directly rather
-	    
-	    // slope
-	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
-	        int label = parcel[xyz];
-	        int ngblb = neighbor[xyz];
-	        	        
-            float wgty = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)
-                        *Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
-            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
-                
-	        // find the neighbor in the list
-	        int loc = -1;
-	        for (int n=0;n<ngblist[label-1].length;n++) {
-	            if (ngblb==ngblist[label-1][n]) {
-	                 loc=n;
-	                 n=ngblist[label-1].length;
-	            }
-	        }
-	        if (loc>-1) {
-	            slope[label-1][loc] += (2.0f*Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)-1.0f)
-                                            *wgtx*wgty;
-                    
-                //dist[loc][label-1] += (levelset[xyz]-offset[loc][label-1])*wgtx*wgty;
-                dist[label-1][loc] += levelset[xyz]*wgtx*wgty;
-            }                      
-            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
-            loc = -1;
-	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
-	             if (label==ngblist[ngblb-1][n]) {
-	                 loc=n;
-	                 n=ngblist[ngblb-1].length;
-	             }
-	        }
-	        if (loc>-1) {
-                slope[ngblb-1][loc] += -(2.0f*Numerics.bounded((inputImage[xyz]-interior[label-1])/(interior[ngblb-1]-interior[label-1]), delta, 1.0f-delta)-1.0f)
-                                            *wgtx*wgty;
-                                            
-                //dist[loc][ngblb-1] += -(-levelset[xyz]-offset[loc][ngblb-1])*wgtx*wgty;
-                dist[ngblb-1][loc] += levelset[xyz]*wgtx*wgty;
-            }
-            
-        }
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-	        if (dist[xyzs][c]>0) slope[xyzs][c] = 0.5f*slope[xyzs][c]/dist[xyzs][c];
-	    }
-	        
-	    cnrImage = new float[nxyz];
-        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
-            int label = parcel[xyz];
-            int ngblb = neighbor[xyz];
-                
-            if (levelset[xyz]<1.0f) {
-                cnrImage[xyz] = 2.0f*Numerics.abs(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1]);
-            }
-        }
-        
-        sharpnessImage = new float[nxyz];
-        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
-            int label = parcel[xyz];
-            int ngblb = neighbor[xyz];
-                
-            if (levelset[xyz]<1.0f) {
-                // find the neighbor in the list
-                int loc = -1;
-                for (int n=0;n<ngblist[label-1].length;n++) {
-                     if (ngblb==ngblist[label-1][n]) {
-                         loc=n;
-                         n=ngblist[label-1].length;
-                     }
-                }
-                if (loc>-1)
-                    sharpnessImage[xyz] = slope[label-1][loc];
-            }
-        }
-        
-        boundariesImage = new float[nxyz];    
-        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
-            int label = parcel[xyz];
-            int ngblb = neighbor[xyz];
-                
-            if (levelset[xyz]<1.0f) {
-                // find the neighbor in the list
-                int loc = -1;
-                for (int n=0;n<ngblist[label-1].length;n++) {
-                     if (ngblb==ngblist[label-1][n]) {
-                         loc=n;
-                         n=ngblist[label-1].length;
-                     }
-                }
-                if (loc>-1) {
-                    // probability of existence: CNR>0.5, N_boundary>scaling, other?
-                    double pcnr = 1.0-FastMath.exp(-0.5f*Numerics.square(4.0f*(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1])));
-                    double pbnd = 1.0-FastMath.exp(-0.5f*Numerics.square(bdcount[label-1][loc]/scaling));
-                    boundariesImage[xyz] = (float)FastMath.sqrt(pcnr*pbnd);
-                }
-            }
-        }
-	    return;
-	}
-
-	
-	public void fitRecursiveBoundarySigmoid() {
+	public void fitRecursiveBoundarySigmoid(int iter) {
 	    // we assume we have the distance to the boundary and the label of the closest supervoxel
 	    // now we fit a sigmoid to intensity, distance for each boundary
 	    // the sigmoid has three parameters: height (contrast), slope (sharpness) and offset (true boundary)
@@ -620,18 +433,43 @@ public class BoundarySharpness {
 	        for (int n=0;n<ngblist[label-1].length;n++) {
 	            if (ngblb==ngblist[label-1][n]) {
 	                found=true;
-	                bdcount[label-1][n]++;
 	                n=ngblist[label-1].length;
 	            } else if (ngblist[label-1][n]==0) {
-	                last=n;
+	                ngblist[label-1][n] = ngblb;
 	                n=ngblist[label-1].length;
 	            }
 	        }
-	        if (!found && last<nngb) {
-	            ngblist[label-1][last] = ngblb;
-	            //bdcount[label-1][last] = 1;
-	        }
 	    }
+	    
+	    // count numbers of voxels in bdcount: exclude in the rest regions with too few voxels
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	    
+            // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1) {
+	            bdcount[label-1][loc] += 1.0f;
+            }                      
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1) {
+                bdcount[ngblb-1][loc] += 1.0f;
+            }
+        }
+        float mincount = scaling;
 	    
 	    // boundaries: use all the interior of a given region
 	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
@@ -663,7 +501,7 @@ public class BoundarySharpness {
 	                 n=ngblist[label-1].length;
 	            }
 	        }
-	        if (loc>-1) {
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
 	            offset[label-1][loc] +=  levelset[xyz]*wgtx*wgty;
                 bdweight[label-1][loc] += wgtx*wgty;
             }                      
@@ -676,7 +514,7 @@ public class BoundarySharpness {
 	                 n=ngblist[ngblb-1].length;
 	             }
 	        }
-	        if (loc>-1) {
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
                 offset[ngblb-1][loc] += -levelset[xyz]*wgtx*wgty;
                 bdweight[ngblb-1][loc] += wgtx*wgty;
             }
@@ -692,7 +530,7 @@ public class BoundarySharpness {
 	        	        
             float wgty = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)
                         *Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
-            //float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
+            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
                 
 	        // find the neighbor in the list
 	        int loc = -1;
@@ -702,8 +540,8 @@ public class BoundarySharpness {
 	                 n=ngblist[label-1].length;
 	            }
 	        }
-	        if (loc>-1) {
-	            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)), delta, 1.0f-delta);
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
+	            //float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)), delta, 1.0f-delta);
 	            
 	            slope[label-1][loc] += (2.0f*Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)-1.0f)
                                             *wgtx*wgty;
@@ -712,6 +550,7 @@ public class BoundarySharpness {
                 dist[label-1][loc] += (levelset[xyz]-offset[label-1][loc])*wgtx*wgty;
             }                      
             // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            // ut you have to flip the relationship so that the average moves away from zero (for the distance average, which would then become unstable)
             loc = -1;
 	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
 	             if (label==ngblist[ngblb-1][n]) {
@@ -719,27 +558,25 @@ public class BoundarySharpness {
 	                 n=ngblist[ngblb-1].length;
 	             }
 	        }
-	        if (loc>-1) {
-	            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)), delta, 1.0f-delta);
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+	            //float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)), delta, 1.0f-delta);
 	            
                 slope[ngblb-1][loc] += -(2.0f*Numerics.bounded((inputImage[xyz]-interior[label-1])/(interior[ngblb-1]-interior[label-1]), delta, 1.0f-delta)-1.0f)
                                             *wgtx*wgty;
                                             
-                //dist[ngblb-1][loc] += levelset[xyz]*wgtx*wgty;
-                dist[ngblb-1][loc] += (levelset[xyz]-offset[ngblb-1][loc])*wgtx*wgty;
+                //dist[ngblb-1][loc] += -levelset[xyz]*wgtx*wgty;
+                dist[ngblb-1][loc] += -(-levelset[xyz]-offset[ngblb-1][loc])*wgtx*wgty;
             }
             
         }
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
 	        if (dist[xyzs][c]>0) slope[xyzs][c] = 0.5f*slope[xyzs][c]/dist[xyzs][c];
+	        if (slope[xyzs][c]>2.0f) slope[xyzs][c] = 2.0f;
+	        if (slope[xyzs][c]<-2.0f) slope[xyzs][c] = -2.0f;
 	    }
-	    
-	    // estimate goodness of fit
 	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
 	        int label = parcel[xyz];
 	        int ngblb = neighbor[xyz];
-	    
-            float sigmoid = (inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]);
 	        
 	        // find the neighbor in the list
 	        int loc = -1;
@@ -749,10 +586,48 @@ public class BoundarySharpness {
 	                 n=ngblist[label-1].length;
 	            }
 	        }
-	        if (loc>-1) {
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
+	            if (interior[label-1]>interior[ngblb-1]) {
+	                slope[label-1][loc] = Numerics.abs(slope[label-1][loc]);
+	            } else {
+	                slope[label-1][loc] = -Numerics.abs(slope[label-1][loc]);
+	            }
+	        }
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+	            if (interior[label-1]>interior[ngblb-1]) {
+	                slope[ngblb-1][loc] = -Numerics.abs(slope[ngblb-1][loc]);
+	            } else {
+	                slope[ngblb-1][loc] = Numerics.abs(slope[ngblb-1][loc]);
+	            }
+	        }
+	    }
+	    
+	    // estimate goodness of fit
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	    
+            // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
+	            float sigmoid = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
 	            float estimate = 1.0f/(1.0f+(float)FastMath.exp(-slope[label-1][loc]*((levelset[xyz]-offset[label-1][loc])/dist0)));
 	            fitness[label-1][loc] += Numerics.square(sigmoid - estimate);
-	            bdcount[label-1][loc] += 1.0f;
+	            //bdcount[label-1][loc] += 1.0f;
             }                      
             // also in the neighbor's for negative values? yes, so increase the quality of the estimation
             loc = -1;
@@ -762,20 +637,21 @@ public class BoundarySharpness {
 	                 n=ngblist[ngblb-1].length;
 	             }
 	        }
-	        if (loc>-1) {
-                float estimate = 1.0f - 1.0f/(1.0f+(float)FastMath.exp(-slope[ngblb-1][loc]*((-levelset[xyz]-offset[ngblb-1][loc])/dist0)));
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+                float sigmoid = Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+	            float estimate = 1.0f/(1.0f+(float)FastMath.exp(-slope[ngblb-1][loc]*((-levelset[xyz]-offset[ngblb-1][loc])/dist0)));
 	            fitness[ngblb-1][loc] += Numerics.square(sigmoid - estimate);
-	            bdcount[ngblb-1][loc] += 1.0f;
+	            //bdcount[ngblb-1][loc] += 1.0f;
             }
         }
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-	        if (bdcount[xyzs][c]>0) fitness[xyzs][c] /= bdcount[xyzs][c];
+	        if (bdcount[xyzs][c]>mincount) fitness[xyzs][c] /= bdcount[xyzs][c];
 	    }
 	    float Fmean=0.0f;
 	    float Fmax=0.0f;
 	    int nf=0;
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-	        if (bdcount[xyzs][c]>0) {
+	        if (bdcount[xyzs][c]>mincount) {
 	            Fmean += fitness[xyzs][c];
 	            nf++;
 	            if (fitness[xyzs][c]>Fmax) Fmax=fitness[xyzs][c];
@@ -784,7 +660,8 @@ public class BoundarySharpness {
 	    System.out.println("Normalized average error: "+Fmean/nf+", maximum error: "+Fmax);
 	    
         // iterate?	        
-	    for (int t=0;t<10;t++) {
+        float Fprev = Fmean/nf;
+	    for (int t=0;t<iter;t++) {
 	        System.out.println("Iteration "+t);
 
             // boundaries: use all the interior of a given region, now contingent on boundaries
@@ -803,11 +680,14 @@ public class BoundarySharpness {
                          n=ngblist[label-1].length;
                     }
                 }
-                if (loc>-1) {
-                    interior[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)))*inputImage[xyz];
-                    incount[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)));
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
+                    // inside label: only if positive after offset
+                    if (levelset[xyz]-offset[label-1][loc]>=0) {
+                        interior[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)))*inputImage[xyz];
+                        incount[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)));
+                    }
                 }
-                // also in the neighbor's for negative values
+                // also in the neighbor's for negative values? yes, but restrict to inside (i.e.levelset>0)
                 loc = -1;
                 for (int n=0;n<ngblist[ngblb-1].length;n++) {
                      if (label==ngblist[ngblb-1][n]) {
@@ -815,9 +695,12 @@ public class BoundarySharpness {
                          n=ngblist[ngblb-1].length;
                      }
                 }
-                if (loc>-1) {
-                    interior[ngblb-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)))*inputImage[xyz];
-                    incount[ngblb-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)));
+                if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+                    // outside label: only if positive after offset
+                    if (-levelset[xyz]-offset[ngblb-1][loc]>=0) {
+                        interior[ngblb-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)))*inputImage[xyz];
+                        incount[ngblb-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)));
+                    }
                 }
             }
             for (int xyzs=0;xyzs<nsxyz;xyzs++) {
@@ -849,7 +732,7 @@ public class BoundarySharpness {
                          n=ngblist[label-1].length;
                     }
                 }
-                if (loc>-1) {
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
                     float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)), delta, 1.0f-delta);
                     off[label-1][loc] +=  levelset[xyz]*wgtx*wgty;
                     bdweight[label-1][loc] += wgtx*wgty;
@@ -863,14 +746,14 @@ public class BoundarySharpness {
                          n=ngblist[ngblb-1].length;
                      }
                 }
-                if (loc>-1) {
+                if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
                     float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)), delta, 1.0f-delta);
                     off[ngblb-1][loc] += -levelset[xyz]*wgtx*wgty;
                     bdweight[ngblb-1][loc] += wgtx*wgty;
                 }
             }
             for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-                if (bdweight[xyzs][c]>0) offset[xyzs][c] = off[xyzs][c]/bdweight[xyzs][c];
+                if (bdweight[xyzs][c]>0) off[xyzs][c] = off[xyzs][c]/bdweight[xyzs][c];
             }
             
             // slope
@@ -894,14 +777,14 @@ public class BoundarySharpness {
                          n=ngblist[label-1].length;
                     }
                 }
-                if (loc>-1) {
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
                     float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((levelset[xyz]-offset[label-1][loc])/dist0)), delta, 1.0f-delta);
                     
                     slope[label-1][loc] += (2.0f*Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)-1.0f)
                                                 *wgtx*wgty;
                         
                     //dist[label-1][loc] += levelset[xyz]*wgtx*wgty;
-                    dist[label-1][loc] += (levelset[xyz]-offset[label-1][loc])*wgtx*wgty;
+                    dist[label-1][loc] += (levelset[xyz]-off[label-1][loc])*wgtx*wgty;
                 }                      
                 // also in the neighbor's for negative values? yes, so increase the quality of the estimation
                 loc = -1;
@@ -911,30 +794,25 @@ public class BoundarySharpness {
                          n=ngblist[ngblb-1].length;
                      }
                 }
-                if (loc>-1) {
+                if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
                     float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square((-levelset[xyz]-offset[ngblb-1][loc])/dist0)), delta, 1.0f-delta);
                     
                     slope[ngblb-1][loc] += -(2.0f*Numerics.bounded((inputImage[xyz]-interior[label-1])/(interior[ngblb-1]-interior[label-1]), delta, 1.0f-delta)-1.0f)
                                                 *wgtx*wgty;
                                                 
                     //dist[ngblb-1][loc] += levelset[xyz]*wgtx*wgty;
-                    dist[ngblb-1][loc] += (levelset[xyz]-offset[ngblb-1][loc])*wgtx*wgty;
+                    dist[ngblb-1][loc] += -(-levelset[xyz]-off[ngblb-1][loc])*wgtx*wgty;
                 }
                 
             }
             for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
                 if (dist[xyzs][c]>0) slope[xyzs][c] = 0.5f*slope[xyzs][c]/dist[xyzs][c];
-            }
-            
-            // estimate goodness of fit
-            for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-                fitness[xyzs][c] = 0.0f;
+                if (slope[xyzs][c]>2.0f) slope[xyzs][c] = 2.0f;
+                if (slope[xyzs][c]<-2.0f) slope[xyzs][c] = -2.0f;
             }
             for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
                 int label = parcel[xyz];
                 int ngblb = neighbor[xyz];
-            
-                float sigmoid = (inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]);
                 
                 // find the neighbor in the list
                 int loc = -1;
@@ -944,7 +822,53 @@ public class BoundarySharpness {
                          n=ngblist[label-1].length;
                     }
                 }
-                if (loc>-1) {
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
+                    if (interior[label-1]>interior[ngblb-1]) {
+                        slope[label-1][loc] = Numerics.abs(slope[label-1][loc]);
+                    } else {
+                        slope[label-1][loc] = -Numerics.abs(slope[label-1][loc]);
+                    }
+                }
+                // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+                loc = -1;
+                for (int n=0;n<ngblist[ngblb-1].length;n++) {
+                     if (label==ngblist[ngblb-1][n]) {
+                         loc=n;
+                         n=ngblist[ngblb-1].length;
+                     }
+                }
+                if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+                    if (interior[label-1]>interior[ngblb-1]) {
+                        slope[ngblb-1][loc] = -Numerics.abs(slope[ngblb-1][loc]);
+                    } else {
+                        slope[ngblb-1][loc] = Numerics.abs(slope[ngblb-1][loc]);
+                    }
+                }
+            }
+            // replace old offset only here
+            for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
+                offset[xyzs][c] = off[xyzs][c];
+            }
+            
+            
+            // estimate goodness of fit
+            for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
+                fitness[xyzs][c] = 0.0f;
+            }
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcel[xyz];
+                int ngblb = neighbor[xyz];
+            
+                // find the neighbor in the list
+                int loc = -1;
+                for (int n=0;n<ngblist[label-1].length;n++) {
+                    if (ngblb==ngblist[label-1][n]) {
+                         loc=n;
+                         n=ngblist[label-1].length;
+                    }
+                }
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
+                    float sigmoid = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
                     float estimate = 1.0f/(1.0f+(float)FastMath.exp(-slope[label-1][loc]*((levelset[xyz]-offset[label-1][loc])/dist0)));
                     fitness[label-1][loc] += Numerics.square(sigmoid - estimate);
                 }                      
@@ -956,25 +880,28 @@ public class BoundarySharpness {
                          n=ngblist[ngblb-1].length;
                      }
                 }
-                if (loc>-1) {
-                    float estimate = 1.0f - 1.0f/(1.0f+(float)FastMath.exp(-slope[ngblb-1][loc]*((-levelset[xyz]-offset[ngblb-1][loc])/dist0)));
+                if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+                    float sigmoid = Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+                    float estimate = 1.0f/(1.0f+(float)FastMath.exp(-slope[ngblb-1][loc]*((-levelset[xyz]-offset[ngblb-1][loc])/dist0)));
                     fitness[ngblb-1][loc] +=  Numerics.square(sigmoid - estimate);
                 }
             }
             for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-                if (bdcount[xyzs][c]>0) fitness[xyzs][c] /= bdcount[xyzs][c];
+                if (bdcount[xyzs][c]>mincount) fitness[xyzs][c] /= bdcount[xyzs][c];
             }
             Fmean=0.0f;
             Fmax=0.0f;
             nf=0;
             for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
-                if (bdcount[xyzs][c]>0) {
+                if (bdcount[xyzs][c]>mincount) {
                     Fmean += fitness[xyzs][c];
                     nf++;
                     if (fitness[xyzs][c]>Fmax) Fmax=fitness[xyzs][c];
                 }
             }
             System.out.println("Normalized average error: "+Fmean/nf+", maximum error: "+Fmax);
+            //if (Fmean/nf>1.1*Fprev) t = iter;
+            //else Fprev = Fmean/nf;
         }  
 	    // outputs
 	    
@@ -1014,12 +941,31 @@ public class BoundarySharpness {
                          n=ngblist[label-1].length;
                      }
                 }
-                if (loc>-1)
-                    sharpnessImage[xyz] = slope[label-1][loc];
+                if (loc>-1 && bdcount[label-1][loc]>mincount)
+                    sharpnessImage[xyz] = Numerics.abs(slope[label-1][loc]);
             }
         }
-        
-        // boundary probability based on CNR, number of samples, offset value
+        /*
+        // boundaries offset coefficient
+        boundariesImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+            int label = parcel[xyz];
+            int ngblb = neighbor[xyz];
+                
+            if (levelset[xyz]<1.0f) {
+                // find the neighbor in the list
+                int loc = -1;
+                for (int n=0;n<ngblist[label-1].length;n++) {
+                     if (ngblb==ngblist[label-1][n]) {
+                         loc=n;
+                         n=ngblist[label-1].length;
+                     }
+                }
+                if (loc>-1 && bdcount[label-1][loc]>mincount)
+                    boundariesImage[xyz] = offset[label-1][loc];
+            }
+        }*/
+        // boundary probability based on CNR, number of samples, offset value, slope value
         boundariesImage = new float[nxyz];    
         for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
             int label = parcel[xyz];
@@ -1034,14 +980,324 @@ public class BoundarySharpness {
                          n=ngblist[label-1].length;
                      }
                 }
-                if (loc>-1) {
-                    // probability of existence: CNR>0.5, N_boundary>scaling, other?
-                    double pcnr = 1.0-FastMath.exp(-0.5f*Numerics.square(4.0f*(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1])));
-                    double pbnd = 1.0-FastMath.exp(-0.5f*Numerics.square(bdcount[label-1][loc]/scaling));
-                    boundariesImage[xyz] = (float)FastMath.sqrt(pcnr*pbnd);
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
+                    // probability of existence: CNR>0.5, N_boundary>>scaling, offset~0, slope~0.33
+                    // here we assume that all p should be close to 1 for a proper boundary, hence we don't renormalize
+                    double pcnr = 1.0-FastMath.exp(-0.5*Numerics.square(4.0f*(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1])));
+                    double pbnd = 1.0-FastMath.exp(-0.5*Numerics.square(bdcount[label-1][loc]/(mincount*mincount)));
+                    double poff = FastMath.exp(-0.5*Numerics.square(offset[label-1][loc]/dist0));
+                    double pslp = FastMath.exp(-0.5*Numerics.square((Numerics.abs(slope[label-1][loc])-0.33)/dist0));
+                    boundariesImage[xyz] = (float)(pcnr*pbnd*poff*pslp);
                 }
             }
         }
+        
+	    return;
+	}
+
+	public void fitBasicBoundarySigmoid() {
+	    // we assume we have the distance to the boundary and the label of the closest supervoxel
+	    // now we fit a sigmoid to intensity, distance for each boundary
+	    // the sigmoid has three parameters: height (contrast), slope (sharpness) and offset (true boundary)
+	    
+	    // we assume a probabilistic prior separation into 3 regions, with the boundary being centered
+	    // at zero and the slope being two voxels in spread
+	    // thus inside is 1-exp(-|lvl|/d0), and boundary is exp(-|lvl|/d0)
+	    
+	    float[] interior = new float[nsxyz];
+	    float[] incount = new float[nsxyz];
+	    
+	    float delta = 0.001f;
+	    float delta0 = 0.1f;
+	    float dist0 = 2.0f;
+	    //int nngb = 30;
+	    
+	    // use HashSets to count the number of needed neighbors per location
+	    HashSet[] ngbset = new HashSet[nsxyz];
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        ngbset[xyzs] = new HashSet(nngb);
+	    }
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+	        ngbset[label-1].add(ngblb);
+	    }
+	    // count the number of neighbors per region??
+	    // must build a full list...
+	    int[][] ngblist = new int[nsxyz][];
+	    int[][] bdcount = new int[nsxyz][];
+	    float[][] slope = new float[nsxyz][];
+	    float[][] dist = new float[nsxyz][];
+	    float[][] fitness = new float[nsxyz][];
+
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	         ngblist[xyzs] = new int[ngbset[xyzs].size()];
+	         bdcount[xyzs] = new int[ngbset[xyzs].size()];
+	         slope[xyzs] = new float[ngbset[xyzs].size()];
+	         dist[xyzs] = new float[ngbset[xyzs].size()];
+	         fitness[xyzs] = new float[ngbset[xyzs].size()];
+	    }
+	    
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+	        boolean found=false;
+	        int last = ngblist[label-1].length;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                found=true;
+	                n=ngblist[label-1].length;
+	            } else if (ngblist[label-1][n]==0) {
+	                ngblist[label-1][n] = ngblb;
+	                n=ngblist[label-1].length;
+	            }
+	        }
+	    }
+	    
+	    // count numbers of voxels in bdcount: exclude in the rest regions with too few voxels
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	    
+            // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1) {
+	            bdcount[label-1][loc] += 1.0f;
+            }                      
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1) {
+                bdcount[ngblb-1][loc] += 1.0f;
+            }
+        }
+        float mincount = scaling;
+	    
+	    // boundaries: use all the interior of a given region
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        interior[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*inputImage[xyz];
+	        incount[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)));
+	    }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) interior[xyzs] /= incount[xyzs];
+	    }
+	    
+	    	    
+	    // offset: assume it's zero
+
+	    // slope
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	        	        
+            float wgty = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)
+                        *Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)), delta, 1.0f-delta);
+                
+	        // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
+	            slope[label-1][loc] += (2.0f*Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta)-1.0f)
+                                            *wgtx*wgty;
+                    
+                dist[label-1][loc] += levelset[xyz]*wgtx*wgty;
+            }                      
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            // ut you have to flip the relationship so that the average moves away from zero (for the distance average, which would then become unstable)
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+	            slope[ngblb-1][loc] += -(2.0f*Numerics.bounded((inputImage[xyz]-interior[label-1])/(interior[ngblb-1]-interior[label-1]), delta, 1.0f-delta)-1.0f)
+                                            *wgtx*wgty;
+                                            
+                dist[ngblb-1][loc] += levelset[xyz]*wgtx*wgty;
+            }
+            
+        }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
+	        if (dist[xyzs][c]>0) slope[xyzs][c] = 0.5f*slope[xyzs][c]/dist[xyzs][c];
+	        if (slope[xyzs][c]>2.0f) slope[xyzs][c] = 2.0f;
+	        if (slope[xyzs][c]<-2.0f) slope[xyzs][c] = -2.0f;
+	    }
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+	        // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
+	            if (interior[label-1]>interior[ngblb-1]) {
+	                slope[label-1][loc] = Numerics.abs(slope[label-1][loc]);
+	            } else {
+	                slope[label-1][loc] = -Numerics.abs(slope[label-1][loc]);
+	            }
+	        }
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+	            if (interior[label-1]>interior[ngblb-1]) {
+	                slope[ngblb-1][loc] = -Numerics.abs(slope[ngblb-1][loc]);
+	            } else {
+	                slope[ngblb-1][loc] = Numerics.abs(slope[ngblb-1][loc]);
+	            }
+	        }
+	    }
+	    
+	    // estimate goodness of fit
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	    
+            // find the neighbor in the list
+	        int loc = -1;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                 loc=n;
+	                 n=ngblist[label-1].length;
+	            }
+	        }
+	        if (loc>-1 && bdcount[label-1][loc]>mincount) {
+	            float sigmoid = Numerics.bounded((inputImage[xyz]-interior[ngblb-1])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+	            float estimate = 1.0f/(1.0f+(float)FastMath.exp(-slope[label-1][loc]*(levelset[xyz]/dist0)));
+	            fitness[label-1][loc] += Numerics.square(sigmoid - estimate);
+	            //bdcount[label-1][loc] += 1.0f;
+            }                      
+            // also in the neighbor's for negative values? yes, so increase the quality of the estimation
+            loc = -1;
+	        for (int n=0;n<ngblist[ngblb-1].length;n++) {
+	             if (label==ngblist[ngblb-1][n]) {
+	                 loc=n;
+	                 n=ngblist[ngblb-1].length;
+	             }
+	        }
+	        if (loc>-1 && bdcount[ngblb-1][loc]>mincount) {
+                float sigmoid = Numerics.bounded((interior[label-1]-inputImage[xyz])/(interior[label-1]-interior[ngblb-1]), delta, 1.0f-delta);
+	            float estimate = 1.0f/(1.0f+(float)FastMath.exp(-slope[ngblb-1][loc]*(-levelset[xyz]/dist0)));
+	            fitness[ngblb-1][loc] += Numerics.square(sigmoid - estimate);
+	            //bdcount[ngblb-1][loc] += 1.0f;
+            }
+        }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
+	        if (bdcount[xyzs][c]>mincount) fitness[xyzs][c] /= bdcount[xyzs][c];
+	    }
+	    float Fmean=0.0f;
+	    float Fmax=0.0f;
+	    int nf=0;
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int c=0;c<ngblist[xyzs].length;c++) {
+	        if (bdcount[xyzs][c]>mincount) {
+	            Fmean += fitness[xyzs][c];
+	            nf++;
+	            if (fitness[xyzs][c]>Fmax) Fmax=fitness[xyzs][c];
+	        }
+	    }
+	    System.out.println("Normalized average error: "+Fmean/nf+", maximum error: "+Fmax);
+	    
+ 	    
+	    // boundary SNR
+	    float[] noise = new float[nsxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        noise[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*Numerics.square(inputImage[xyz]-interior[label-1]);
+	    }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) noise[xyzs] = (float)FastMath.sqrt(noise[xyzs]/incount[xyzs]);
+	    }
+	    
+	    cnrImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+            int label = parcel[xyz];
+            int ngblb = neighbor[xyz];
+                
+            if (levelset[xyz]<1.0f) {
+                cnrImage[xyz] = 2.0f*Numerics.abs(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1]);
+            }
+        }
+        
+        // sharpness given by slope coefficient
+        sharpnessImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+            int label = parcel[xyz];
+            int ngblb = neighbor[xyz];
+                
+            if (levelset[xyz]<1.0f) {
+                // find the neighbor in the list
+                int loc = -1;
+                for (int n=0;n<ngblist[label-1].length;n++) {
+                     if (ngblb==ngblist[label-1][n]) {
+                         loc=n;
+                         n=ngblist[label-1].length;
+                     }
+                }
+                if (loc>-1 && bdcount[label-1][loc]>mincount)
+                    sharpnessImage[xyz] = Numerics.abs(slope[label-1][loc]);
+            }
+        }
+        
+        // boundary probability based on CNR, number of samples, offset value, slope value
+        boundariesImage = new float[nxyz];    
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+            int label = parcel[xyz];
+            int ngblb = neighbor[xyz];
+                
+            if (levelset[xyz]<1.0f) {
+                // find the neighbor in the list
+                int loc = -1;
+                for (int n=0;n<ngblist[label-1].length;n++) {
+                     if (ngblb==ngblist[label-1][n]) {
+                         loc=n;
+                         n=ngblist[label-1].length;
+                     }
+                }
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
+                    // probability of existence: CNR>0.5, N_boundary>>scaling, slope~0.33
+                    // here we assume that all p should be close to 1 for a proper boundary, hence we don't renormalize
+                    double pcnr = 1.0-FastMath.exp(-0.5*Numerics.square(4.0f*(interior[label-1]-interior[ngblb-1])/Numerics.max(delta,noise[label-1]+noise[ngblb-1])));
+                    double pbnd = 1.0-FastMath.exp(-0.5*Numerics.square(bdcount[label-1][loc]/(mincount*mincount)));
+                    double pslp = FastMath.exp(-0.5*Numerics.square((Numerics.abs(slope[label-1][loc])-0.33)/dist0));
+                    boundariesImage[xyz] = (float)(pcnr*pbnd*pslp);
+                }
+            }
+        }
+        
 	    return;
 	}
 
