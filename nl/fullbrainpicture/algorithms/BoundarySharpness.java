@@ -966,6 +966,7 @@ public class BoundarySharpness {
             }
         }*/
         // boundary probability based on CNR, number of samples, offset value, slope value
+        // not vrey specific, only good to remove weird cases 
         boundariesImage = new float[nxyz];    
         for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
             int label = parcel[xyz];
@@ -1298,6 +1299,32 @@ public class BoundarySharpness {
             }
         }
         
+        // boundary probability based on Jensen-Shannon divergence? better measure
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+            int label = parcel[xyz];
+            int ngblb = neighbor[xyz];
+                
+            if (levelset[xyz]<1.0f) {
+                // find the neighbor in the list
+                int loc = -1;
+                for (int n=0;n<ngblist[label-1].length;n++) {
+                     if (ngblb==ngblist[label-1][n]) {
+                         loc=n;
+                         n=ngblist[label-1].length;
+                     }
+                }
+                if (loc>-1 && bdcount[label-1][loc]>mincount) {
+                    double sigmaAB = (incount[label-1]*noise[label-1]*noise[label-1] + incount[ngblb-1]*noise[ngblb-1]*noise[ngblb-1]
+                                        + incount[label-1]*incount[ngblb-1]/(incount[label-1]+incount[ngblb-1])
+                                            *(interior[label-1]-interior[ngblb-1])*(interior[label-1]-interior[ngblb-1]))
+                                                /(incount[label-1]+incount[ngblb-1]);
+                                                
+                    double jsdiv = 0.5*FastMath.log(sigmaAB) - 0.5*FastMath.log(noise[label-1]) - 0.5*FastMath.log(noise[ngblb-1]);
+                    boundariesImage[xyz] = (float)FastMath.sqrt(jsdiv);
+                }
+            }
+        }
+                
 	    return;
 	}
 
