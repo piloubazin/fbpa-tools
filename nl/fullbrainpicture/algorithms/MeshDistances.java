@@ -54,4 +54,15 @@ public class MeshDistances {
         
     }
 
+    public final void computeSignedDistances() {
+        
+        int npt = pointList.length/3;
+        
+        distances = new float[4][npt];
+        closest = new int[4][npt];
+        
+        MeshProcessing.computeSignedDistanceFunctions(4, distances, closest, pointList, triangleList, labelList);
+        
+    }
+
 }

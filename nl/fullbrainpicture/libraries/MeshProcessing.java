@@ -578,4 +578,287 @@ public class MeshProcessing {
         
     }
     
+   
+    public static final void computeSignedDistanceFunctions(int nb, float[][] distances, int[][] closest, float[] pts, int[] faces, int[] labels) {
+        
+        // assume we have nb x npt arrays for distances, closest
+        
+        // here we only propagate labels > 0
+        
+        int npt = pts.length/3;
+        int nfc = faces.length/3;
+        
+        int[][] ngbf =  generateFaceNeighborTable(npt, faces);
+        int[][] ngbp =  generatePointNeighborTable(npt, faces);
+        
+        BinaryHeapPair oheap = new BinaryHeapPair((int)FastMath.sqrt(npt), BinaryHeapPair.MINTREE);
+        BinaryHeapPair iheap = new BinaryHeapPair((int)FastMath.sqrt(npt), BinaryHeapPair.MINTREE);
+		
+        // region growing from boundary inside
+        for (int nf=0;nf<nfc;nf++) {
+            // check by faces, not points
+            if (labels[faces[3*nf+0]]!=labels[faces[3*nf+1]] 
+                || labels[faces[3*nf+1]]!=labels[faces[3*nf+2]] 
+                    || labels[faces[3*nf+2]]!=labels[faces[3*nf+0]]) {
+
+                // either two or three labels
+                if (labels[faces[3*nf+0]]!=labels[faces[3*nf+1]] 
+                    && labels[faces[3*nf+1]]!=labels[faces[3*nf+2]] 
+                        && labels[faces[3*nf+2]]!=labels[faces[3*nf+0]]) {
+                
+                    // three label junction
+                    double d01 = FastMath.sqrt( Numerics.square(pts[3*faces[3*nf+0]+X]-pts[3*faces[3*nf+1]+X])
+                                               +Numerics.square(pts[3*faces[3*nf+0]+Y]-pts[3*faces[3*nf+1]+Y])
+                                               +Numerics.square(pts[3*faces[3*nf+0]+Z]-pts[3*faces[3*nf+1]+Z]) );
+                    double d12 = FastMath.sqrt( Numerics.square(pts[3*faces[3*nf+1]+X]-pts[3*faces[3*nf+2]+X])
+                                               +Numerics.square(pts[3*faces[3*nf+1]+Y]-pts[3*faces[3*nf+2]+Y])
+                                               +Numerics.square(pts[3*faces[3*nf+1]+Z]-pts[3*faces[3*nf+2]+Z]) );
+                    double d20 = FastMath.sqrt( Numerics.square(pts[3*faces[3*nf+2]+X]-pts[3*faces[3*nf+0]+X])
+                                               +Numerics.square(pts[3*faces[3*nf+2]+Y]-pts[3*faces[3*nf+0]+Y])
+                                               +Numerics.square(pts[3*faces[3*nf+2]+Z]-pts[3*faces[3*nf+0]+Z]) );
+                    
+                    // add all possible distances outside
+                    if (labels[faces[3*nf+1]]>0 && labels[faces[3*nf+0]]>-1) oheap.addValue(0.5f*(float)d01, faces[3*nf+0], labels[faces[3*nf+1]]);
+                    if (labels[faces[3*nf+0]]>0 && labels[faces[3*nf+1]]>-1) oheap.addValue(0.5f*(float)d01, faces[3*nf+1], labels[faces[3*nf+0]]);
+                    if (labels[faces[3*nf+2]]>0 && labels[faces[3*nf+1]]>-1) oheap.addValue(0.5f*(float)d12, faces[3*nf+1], labels[faces[3*nf+2]]);
+                    if (labels[faces[3*nf+1]]>0 && labels[faces[3*nf+2]]>-1) oheap.addValue(0.5f*(float)d12, faces[3*nf+2], labels[faces[3*nf+1]]);
+                    if (labels[faces[3*nf+0]]>0 && labels[faces[3*nf+2]]>-1) oheap.addValue(0.5f*(float)d20, faces[3*nf+2], labels[faces[3*nf+0]]);
+                    if (labels[faces[3*nf+2]]>0 && labels[faces[3*nf+0]]>-1) oheap.addValue(0.5f*(float)d20, faces[3*nf+0], labels[faces[3*nf+2]]);
+                    // add all possible distances inside
+                    if (labels[faces[3*nf+0]]>0) iheap.addValue(0.5f*(float)Numerics.min(d01,d20), faces[3*nf+0], labels[faces[3*nf+0]]);
+                    if (labels[faces[3*nf+1]]>0) iheap.addValue(0.5f*(float)Numerics.min(d01,d12), faces[3*nf+1], labels[faces[3*nf+1]]);
+                    if (labels[faces[3*nf+2]]>0) iheap.addValue(0.5f*(float)Numerics.min(d12,d20), faces[3*nf+2], labels[faces[3*nf+2]]);
+                } else {
+                    
+                    // find the one that is different
+                    int p=faces[3*nf+0], p1=faces[3*nf+1], p2=faces[3*nf+2];
+                    if (labels[p]==labels[p1]) {
+                        int swap = p2;
+                        p2 = p;
+                        p = swap;
+                    } else if (labels[p]==labels[p2]) {
+                        int swap = p1;
+                        p1 = p;
+                        p = swap;
+                    }
+                    // distance to line between the two points if inside, distance to closest otherwise
+                    // d(P, L_P1P2) = || (P-P1) - (P-P1).(P2-P1) / || P2-P1 ||
+                    double d1 = FastMath.sqrt( (pts[3*p+X]-pts[3*p1+X])*(pts[3*p+X]-pts[3*p1+X])
+                                              +(pts[3*p+Y]-pts[3*p1+Y])*(pts[3*p+Y]-pts[3*p1+Y])
+                                              +(pts[3*p+Z]-pts[3*p1+Z])*(pts[3*p+Z]-pts[3*p1+Z]) );
+                    double d2 = FastMath.sqrt( (pts[3*p+X]-pts[3*p2+X])*(pts[3*p+X]-pts[3*p2+X])
+                                              +(pts[3*p+Y]-pts[3*p2+Y])*(pts[3*p+Y]-pts[3*p2+Y])
+                                              +(pts[3*p+Z]-pts[3*p2+Z])*(pts[3*p+Z]-pts[3*p2+Z]) );
+                    double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
+                                               +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
+                                               +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
+                    double d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                              +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                              +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                    
+                    float dist = Numerics.min(0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);
+                    
+                    // outside distances
+                    if (labels[p1]>0 && labels[p]>-1) oheap.addValue(dist, p, labels[p1]);
+                    if (labels[p]>0 && labels[p1]>-1) oheap.addValue(dist, p1, labels[p]);
+                    if (labels[p]>0 && labels[p2]>-1) oheap.addValue(dist, p2, labels[p]);
+                    // inside distances
+                    if (labels[p]>0) iheap.addValue(dist, p, labels[p]);
+                    if (labels[p1]>0) iheap.addValue(dist, p1, labels[p1]);
+                    if (labels[p2]>0) iheap.addValue(dist, p2, labels[p2]);
+                }
+             }
+         }
+        
+        int[] processed = new int[npt];
+        while (iheap.isNotEmpty()) {
+             // extract point with minimum distance
+        	float dist = iheap.getFirst();
+        	int p = iheap.getFirstId1();
+        	int lb = iheap.getFirstId2();
+			iheap.removeFirst();
+
+			// if more than nb labels have been found already, this is done
+			if (processed[p]>=nb)  continue;
+			
+			// check if the current label is already accounted for
+			boolean found=false;
+			for (int n=0;n<processed[p];n++) if (closest[n][p]==lb) found=true;
+			if (found) continue;
+			
+			// update the distance functions at the current level
+			distances[processed[p]][p] = -dist;
+            closest[processed[p]][p] = lb;
+			processed[p]++; // update the current level
+ 			
+			// find new neighbors
+			for (int k = 0; k<ngbp[p].length; k++) {
+				int nk = ngbp[p][k];
+				
+                if (labels[nk]==lb && labels[nk]>-1) {
+                    found=false;
+                    for (int n=0;n<processed[nk];n++) if (closest[n][nk]==lb) found=true;
+                    
+                    if (!found) {
+                        float mindist=1e9f;
+                        // look for smallest line distance among neighboring faces
+                        for (int f=0;f<ngbf[nk].length;f++) {
+                            int nf = ngbf[nk][f];
+                            int p1=nk, p2=nk;
+                            if (faces[3*nf+0]==nk) { 
+                                p1 = faces[3*nf+1];
+                                p2 = faces[3*nf+2];
+                            } else if (faces[3*nf+1]==nk) {
+                                p1 = faces[3*nf+2];
+                                p2 = faces[3*nf+0];
+                            } else if (faces[3*nf+2]==nk) {
+                                p1 = faces[3*nf+0];
+                                p2 = faces[3*nf+1];
+                            } else {
+                                System.out.print("!");
+                            }
+                            
+                            int found1=-1;
+                            for (int n=0;n<processed[p1];n++) if (closest[n][p1]==lb) found1=n;
+                    
+                            int found2=-1;
+                            for (int n=0;n<processed[p2];n++) if (closest[n][p2]==lb) found2=n;
+                    
+                            if (found1>-1 && found2>-1) {                            
+                                // distance to line between the two points if inside, distance to closest otherwise
+                                // d(P, L_P1P2) = || (P-P1) - (P-P1).(P2-P1) / || P2-P1 ||
+                                
+                                // note that it is still an approximation, just a better one
+                                double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
+                                                          +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p1+Z])*(pts[3*nk+Z]-pts[3*p1+Z]) );
+                                double d2 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p2+X])*(pts[3*nk+X]-pts[3*p2+X])
+                                                          +(pts[3*nk+Y]-pts[3*p2+Y])*(pts[3*nk+Y]-pts[3*p2+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p2+Z])*(pts[3*nk+Z]-pts[3*p2+Z]) );
+                                double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
+                                                           +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
+                                                           +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
+                                double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                          +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                          +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                            
+                                mindist = Numerics.min(mindist, -0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
+                                                       -distances[found1][p1]+(float)d1, -distances[found2][p2]+(float)d2);
+                            } else if (found1>-1) {
+                                double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
+                                                          +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p1+Z])*(pts[3*nk+Z]-pts[3*p1+Z]) );
+    
+                                mindist = Numerics.min(mindist, -distances[found1][p1]+(float)d1);
+                            } else if (found2>-1) {
+                                double d2 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p2+X])*(pts[3*nk+X]-pts[3*p2+X])
+                                                          +(pts[3*nk+Y]-pts[3*p2+Y])*(pts[3*nk+Y]-pts[3*p2+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p2+Z])*(pts[3*nk+Z]-pts[3*p2+Z]) );
+    
+                                mindist = Numerics.min(mindist, -distances[found2][p2]+(float)d2);
+                            }
+                        }
+                        iheap.addValue(mindist, nk, lb);
+                    }
+                }
+            }
+                    
+		}
+        while (oheap.isNotEmpty()) {
+             // extract point with minimum distance
+        	float dist = oheap.getFirst();
+        	int p = oheap.getFirstId1();
+        	int lb = oheap.getFirstId2();
+			oheap.removeFirst();
+
+			// if more than nb labels have been found already, this is done
+			if (processed[p]>=nb)  continue;
+			
+			// check if the current label is already accounted for
+			boolean found=false;
+			for (int n=0;n<processed[p];n++) if (closest[n][p]==lb) found=true;
+			if (found) continue;
+			
+			// update the distance functions at the current level
+			distances[processed[p]][p] = dist;    
+            closest[processed[p]][p] = lb;
+			processed[p]++; // update the current level
+ 			
+			// find new neighbors
+			for (int k = 0; k<ngbp[p].length; k++) {
+				int nk = ngbp[p][k];
+				
+                if (labels[nk]!=lb && labels[nk]>-1) {
+                    found=false;
+                    for (int n=0;n<processed[nk];n++) if (closest[n][nk]==lb) found=true;
+                    
+                    if (!found) {
+                        float mindist=1e9f;
+                        // look for smallest line distance among neighboring faces
+                        for (int f=0;f<ngbf[nk].length;f++) {
+                            int nf = ngbf[nk][f];
+                            int p1=nk, p2=nk;
+                            if (faces[3*nf+0]==nk) { 
+                                p1 = faces[3*nf+1];
+                                p2 = faces[3*nf+2];
+                            } else if (faces[3*nf+1]==nk) {
+                                p1 = faces[3*nf+2];
+                                p2 = faces[3*nf+0];
+                            } else if (faces[3*nf+2]==nk) {
+                                p1 = faces[3*nf+0];
+                                p2 = faces[3*nf+1];
+                            } else {
+                                System.out.print("!");
+                            }
+                            
+                            int found1=-1;
+                            for (int n=0;n<processed[p1];n++) if (closest[n][p1]==lb) found1=n;
+                    
+                            int found2=-1;
+                            for (int n=0;n<processed[p2];n++) if (closest[n][p2]==lb) found2=n;
+                    
+                            if (found1>-1 && found2>-1) {                            
+                                // distance to line between the two points if inside, distance to closest otherwise
+                                // d(P, L_P1P2) = || (P-P1) - (P-P1).(P2-P1) / || P2-P1 ||
+                                
+                                // note that it is still an approximation, just a better one
+                                double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
+                                                          +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p1+Z])*(pts[3*nk+Z]-pts[3*p1+Z]) );
+                                double d2 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p2+X])*(pts[3*nk+X]-pts[3*p2+X])
+                                                          +(pts[3*nk+Y]-pts[3*p2+Y])*(pts[3*nk+Y]-pts[3*p2+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p2+Z])*(pts[3*nk+Z]-pts[3*p2+Z]) );
+                                double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
+                                                           +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
+                                                           +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
+                                double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                          +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                          +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                            
+                                mindist = Numerics.min(mindist, 0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
+                                                       distances[found1][p1]+(float)d1, distances[found2][p2]+(float)d2);
+                            } else if (found1>-1) {
+                                double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
+                                                          +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p1+Z])*(pts[3*nk+Z]-pts[3*p1+Z]) );
+    
+                                mindist = Numerics.min(mindist, distances[found1][p1]+(float)d1);
+                            } else if (found2>-1) {
+                                double d2 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p2+X])*(pts[3*nk+X]-pts[3*p2+X])
+                                                          +(pts[3*nk+Y]-pts[3*p2+Y])*(pts[3*nk+Y]-pts[3*p2+Y])
+                                                          +(pts[3*nk+Z]-pts[3*p2+Z])*(pts[3*nk+Z]-pts[3*p2+Z]) );
+    
+                                mindist = Numerics.min(mindist, distances[found2][p2]+(float)d2);
+                            }
+                        }
+                        oheap.addValue(mindist, nk, lb);
+                    }
+                }
+            }
+                    
+		}
+        return;
+        
+    }
+    
 }
