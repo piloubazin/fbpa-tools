@@ -65,22 +65,107 @@ public class SpectralMeshEmbedding {
 	
 	public void pointDistanceEmbedding(){
 	    
+	    // data size
+	    int npt = pointList.length/3;
+	    
 	    // 1. build the partial representation
-	    int step = Numerics.floor(pointList.length/msize/3.0);
+	    int step = Numerics.floor(npt/msize);
 	    System.out.println("step size: "+step);
         
 	    //build Laplacian / Laplace-Beltrami operator (just Laplace for now)
-	    double[] degree = new double[pointList.length/3];
-	    for (int n=0;n<pointList.length/3;n++) {
-	        degree[n] = 0.0;
-	        for (int m=0;m<pointList.length/3;m++) {
+	    
+	    // degree is quadratic: replace by approx (needs an extra matrix inversion
+	    double[][] Azero = new double[msize][msize];
+	    
+	    for (int n=0;n<msize*step;n+=step) {
+	        
+	        // self affinitiy should be 1?
+            Azero[n/step][n/step] = 1.0;
+	        
+	        for (int m=n+step;m<msize*step;m+=step) {	            
+	            // for now: approximate geodesic distance with Euclidean distance
+	            // note that it is not an issue for data-based distance methods
+	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
+	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
+	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
+	                         
+	            Azero[n/step][m/step] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
+                Azero[m/step][n/step] = Azero[n/step][m/step];
+            }
+        }
+	    // First decomposition for degree: A
+        RealMatrix mtx = new Array2DRowRealMatrix(Azero);
+        EigenDecomposition eig = new EigenDecomposition(mtx);
+
+        double[][] Ainv = new double[msize][msize];
+	    for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+            Ainv[n][m] = 0.0;
+            for (int p=0;p<msize;p++) {
+                Ainv[n][m] += eig.getV().getEntry(n,p)
+                                *1.0/eig.getRealEigenvalue(p)
+                                *eig.getV().getEntry(m,p);
+            }
+        }
+        mtx = null;
+        eig = null;
+
+	    double[] a0r = new double[msize];
+	    double[] b0r = new double[msize];
+	    
+	    // first the rows from A, B^T
+	    /* not needed
+	    for (int n=0;n<msize*step;n+=step) {
+	        a0r[n/step] = 0.0;
+	        b0r[n/step] = 0.0;
+	    }*/
+	    for (int n=0;n<msize*step;n+=step) {
+	        for (int m=0;m<msize*step;m+=step) {	    
+	            /*
+	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
+	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
+	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
+	                         
+	            a0r[n/step] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
+	            */
+	            a0r[n/step] += Azero[n/step][m/step];
+	        }
+	        for (int m=0;m<npt;m++) if (m%step!=0 || m>=msize*step) {
 	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
 	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
 	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
 	            
-	            degree[n] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
+	            b0r[n/step] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
 	        }
 	    }
+	    // convolve rows of B^T with A^-1
+	    double[] ainvb0r = new double[msize];
+	    for (int n=0;n<msize;n++) {
+	        ainvb0r[n] = 0.0;
+	        for (int m=0;m<msize;m++) {
+	            ainvb0r[n] += Ainv[n][m]*b0r[m];
+	        }
+	    }
+	    
+	    // finally the degree
+	    double[] degree = new double[npt];
+	    /*
+	    for (int n=0;n<npt;n++) {
+	        degree[n] = 0.0;
+	    }*/
+	    for (int n=0;n<msize*step;n+=step) {
+	        degree[n] = a0r[n/step]+b0r[n/step];
+	    }
+	    for (int n=0;n<npt;n++) if (n%step!=0 || n>=msize*step) {
+	        for (int m=0;m<msize*step;m+=step) {	
+                double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
+                             +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
+                             +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
+            
+                degree[n] += (1.0 + ainvb0r[m/step])*1.0/(1.0+FastMath.sqrt(dist)/scale);
+            }
+	    }
+
+        System.out.println("build first approximation");
         
 	    // square core matrix
 	    double[][] Acore = new double[msize][msize];
@@ -92,17 +177,21 @@ public class SpectralMeshEmbedding {
 	        for (int m=n+step;m<msize*step;m+=step) {	            
 	            // for now: approximate geodesic distance with Euclidean distance
 	            // note that it is not an issue for data-based distance methods
+	            /*
 	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
 	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
 	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
 	                         
 	            Acore[n/step][m/step] = -1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n];
                 Acore[m/step][n/step] = -1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[m];
+                */
+                Acore[n/step][m/step] = -Azero[n/step][m/step]/degree[n];
+                Acore[m/step][n/step] = -Azero[m/step][n/step]/degree[m];
             }
         }
 	    // First decomposition: A
-        RealMatrix mtx = new Array2DRowRealMatrix(Acore);
-        EigenDecomposition eig = new EigenDecomposition(mtx);
+        mtx = new Array2DRowRealMatrix(Acore);
+        eig = new EigenDecomposition(mtx);
         
         // sort eigenvalues: not needed, already done :)
         /*
@@ -114,6 +203,7 @@ public class SpectralMeshEmbedding {
             }
         }
         */
+        System.out.println("build orthogonalization");
         
         // build S = A + A^-1/2 BB^T A^-1/2
         double[][] sqAinv = new double[msize][msize];
@@ -128,14 +218,16 @@ public class SpectralMeshEmbedding {
         }
         mtx = null;
         eig = null;
-        
+
+        System.out.print(".");        
+
         // banded matrix is too big, we only compute BB^T
         double[][] BBt = new double[msize][msize];
         
         for (int n=0;n<msize*step;n+=step) {
 	        for (int m=0;m<msize*step;m+=step) {
 	            BBt[n/step][m/step] = 0.0;
-	            for (int j=0;j<pointList.length/3;j++) if (j%step!=0) {
+	            for (int j=0;j<npt;j++) if (j%step!=0 || j>=msize*step) {
 	                double distN = Numerics.square(pointList[3*n+X]-pointList[3*j+X])
 	                              +Numerics.square(pointList[3*n+Y]-pointList[3*j+Y])
 	                              +Numerics.square(pointList[3*n+Z]-pointList[3*j+Z]);
@@ -149,7 +241,8 @@ public class SpectralMeshEmbedding {
 	            }
 	        }
 	    }
-	    	    
+	    System.out.print("..");        
+        	    
         // update banded matrix
         double[][] sqAinvBBt = new double[msize][msize];
         
@@ -161,6 +254,8 @@ public class SpectralMeshEmbedding {
         }
         BBt = null;
         
+	    System.out.print("...");        
+
         double[][] Afull = new double[msize][msize];
         
         for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
@@ -170,11 +265,15 @@ public class SpectralMeshEmbedding {
             }
         }
         sqAinvBBt = null;
-        
+
+        System.out.print("....");        
+
         // second eigendecomposition: S = A + A^-1/2 BB^T A^-1/2
         mtx = new Array2DRowRealMatrix(Afull);
         eig = new EigenDecomposition(mtx);
         
+        System.out.println("\nexport result to maps");
+
         // final result A^-1/2 V D^-1/2
         double[][] Vortho = new double[msize][msize];
         
@@ -192,11 +291,11 @@ public class SpectralMeshEmbedding {
         eig = null;
         
         // pass on to global result
-        embeddingList = new float[pointList.length/3*ndims];
+        embeddingList = new float[npt*ndims];
         
         for (int d=0;d<ndims;d++) {
             System.out.println("eigenvalue "+(d+1)+": "+evals[d]);
-            for (int n=0;n<pointList.length/3;n++) {
+            for (int n=0;n<npt;n++) {
                 double embed=0.0;
                 for (int m=0;m<msize*step;m+=step) {
                     
@@ -206,7 +305,7 @@ public class SpectralMeshEmbedding {
                                  
                     embed += 1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n]*Vortho[m/step][d];
                 }
-                embeddingList[n+d*pointList.length/3] = (float)embed;
+                embeddingList[n+d*npt] = (float)embed;
             }
         }
         
