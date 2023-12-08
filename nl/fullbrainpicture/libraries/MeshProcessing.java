@@ -507,8 +507,11 @@ public class MeshProcessing {
 				
                 if (labels[nk]!=lb && labels[nk]>-1) {
                     found=false;
-                    for (int n=0;n<processed[nk];n++) if (closest[n][nk]==lb) found=true;
-                    
+                    if (processed[nk]>=nb) { // no point in adding neighbors that are already set, faster
+                        found=true;
+                    } else {
+                        for (int n=0;n<processed[nk];n++) if (closest[n][nk]==lb) found=true;
+                    }
                     if (!found) {
                         float mindist=1e9f;
                         // look for smallest line distance among neighboring faces

@@ -150,7 +150,8 @@ public class MeshDistances {
             // find the shortest path between two regions
             float[] dist1 = new float[npt];
             float[] dist2 = new float[npt];
-            boolean[] mask = new boolean[npt];
+            boolean[] mask1 = new boolean[npt];
+            boolean[] mask2 = new boolean[npt];
             int ndist=0;
             
             // find locations with both distances defined
@@ -159,8 +160,9 @@ public class MeshDistances {
                     if (closest[d][p]==labels[n1]) dist1[p] = distances[d][p];
                     else if (closest[d][p]==labels[n2]) dist2[p] = distances[d][p];
                 }
-                if (dist1[p]>0 && dist2[p]>0) mask[p] = true;
-                if (mask[p]) ndist++;
+                if (dist1[p]>0) mask1[p] = true;
+                if (dist2[p]>0) mask2[p] = true;
+                if (mask1[p] && mask2[p]) ndist++;
             }
             
             // find the closest path
@@ -168,7 +170,7 @@ public class MeshDistances {
                 // start at the closest point to both labels
                 float d0 = 0.0f;
                 int p0 = -1;
-                for (int p=0;p<npt;p++) if (mask[p]) {
+                for (int p=0;p<npt;p++) if (mask1[p] && mask2[p]) {
                     if (p0==-1 || (p0>-1 && (1+Numerics.abs(dist1[p]-dist2[p]))*(dist1[p]+dist2[p])<d0) ) {
                         d0 = (1+Numerics.abs(dist1[p]-dist2[p]))*(dist1[p]+dist2[p]);
                         p0 = p;
@@ -183,11 +185,11 @@ public class MeshDistances {
                     path[p] = dist;
                     connect[p] = labels[n1];
                     if (dist>maxdist) maxdist = dist;
-                    mask[p] = false;
+                    mask1[p] = false;
                     
                     int pN=-1;
                     float dN = 1e9f;
-                    for (int k=0;k<ngb[p].length;k++) if (mask[ngb[p][k]]) {
+                    for (int k=0;k<ngb[p].length;k++) if (mask1[ngb[p][k]]) {
                         if (pN==-1 || (pN>-1 && dist1[ngb[p][k]]<dN) ) { 
                            pN = ngb[p][k];
                            dN = dist1[pN];
@@ -209,11 +211,11 @@ public class MeshDistances {
                     path[p] = dist;
                     connect[p] = labels[n2];
                     if (dist>maxdist) maxdist = dist;
-                    mask[p] = false;
+                    mask2[p] = false;
                     
                     int pN=-1;
                     float dN = 1e9f;
-                    for (int k=0;k<ngb[p].length;k++) if (mask[ngb[p][k]]) {
+                    for (int k=0;k<ngb[p].length;k++) if (mask2[ngb[p][k]]) {
                         if (pN==-1 || (pN>-1 && dist2[ngb[p][k]]<dN) ) { 
                            pN = ngb[p][k];
                            dN = dist2[pN];
