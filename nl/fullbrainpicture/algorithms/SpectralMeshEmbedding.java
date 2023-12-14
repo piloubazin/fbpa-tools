@@ -15,7 +15,7 @@ import java.util.*;
 /*
  * @author Pierre-Louis Bazin
  */
-public class SpectralMeshEmbeddingDebug {
+public class SpectralMeshEmbedding {
 
     
 	// jist containers
