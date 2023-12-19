@@ -889,11 +889,11 @@ public class SpectralMeshEmbedding {
 	    return 1.0/(1.0+dist/scale);
 	    //return 1.0/(1.0+dist*dist/(scale*scale));
 	}
-	
-	public final void meshDistanceSparseEmbedding(int depth, boolean eigenGame, boolean fullDistance) {
+
+	public final void meshDistanceSparseEmbedding(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
 	    //boolean eigenGame = true;
 	    //boolean fullDistance = false;
-	    double alpha = 0.0;
+	    //double alpha = 0.0;
 	    
 	    int npt=pointList.length/3;
             
@@ -1169,7 +1169,7 @@ public class SpectralMeshEmbedding {
         embeddingList = new float[npt*(ndims-1)];
         for (int dim=1;dim<ndims;dim++) {
             for (int n=0;n<npt;n++) {
-                embeddingList[n+(dim-1)*npt] = (float)init[dim][n];
+                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
             }
         }
         
@@ -1177,8 +1177,11 @@ public class SpectralMeshEmbedding {
 	}
 
 	private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, int nconnect, double alpha) {
-        double step = 1e-2;     // step size
-	    double error = 1e-2;    // error tolerance
+        //double step = 1e-2;     // step size
+	    //double step = 1e-1;     // step size
+	    double step = 0.05;     // step size
+	    //double error = 1e-2;    // error tolerance: makes a big difference in max steps...
+	    double error = 0.05;    // error tolerance
 	    int iter;
         double[][] Mv = new double[nv][nm];
         double[] vMv = new double[nv];
@@ -1263,10 +1266,10 @@ public class SpectralMeshEmbedding {
             
             // main loop
             double[] grad = new double[nm];
-            for (int t=0;t<Ti;t++) {
-//            int t=0;
-//            while (t<Ti && Numerics.abs(norm/4.0-1.0)>error*error) {
-//                t++;
+//            for (int t=0;t<Ti;t++) {
+            int t=0;
+            while (t<Ti && Numerics.abs(norm/4.0-1.0)>error*error) {
+                t++;
                 //System.out.print(".");
                 // pre-compute product
                 double[] viMvj = new double[nv];
@@ -1340,8 +1343,8 @@ public class SpectralMeshEmbedding {
                 norm = 0.0;
                 for (int n=0;n<nm;n++) norm += Mv[vi][n]*Mv[vi][n];
             }
-            //System.out.println(" ("+t+" needed, norm: "+norm+")");
-            System.out.println("norm: "+norm);
+            System.out.println(" ("+t+" needed, norm: "+norm+")");
+            //System.out.println("norm: "+norm);
             
             // post-process: compute summary quantities for next eigenvector
             vMv[vi] = 0.0;
