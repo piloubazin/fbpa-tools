@@ -50,8 +50,8 @@ public class ParcellationMgdmSmoothing {
 	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
 	
 	// create outputs
-	public final int[] getSmoothedImage() { return segImage; }
-	public final float[] getMgdmImage() { return mgdmImage; }
+	public final int[] getSmoothedLabel() { return segImage; }
+	public final float[] getSmoothedProba() { return mgdmImage; }
 
 	public void execute(){
 
@@ -59,6 +59,11 @@ public class ParcellationMgdmSmoothing {
 		int nmgdm = 4;
 		int nlb =  ObjectLabeling.countLabels(parcelImage, nx, ny, nz);
                 
+		if (probaImage==null) {
+		    probaImage = new float[nxyz];
+		    for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 1.0f;
+		}
+		
         // 3. Run MGDM!
         Mgdm3d mgdm = new Mgdm3d(parcelImage, nx, ny, nz, nlb, nmgdm, rx, ry, rz, null, 
                                 probaImage, parcelImage,
@@ -74,6 +79,8 @@ public class ParcellationMgdmSmoothing {
             segImage[xyz] = mgdm.getLabels()[0][xyz];
             mgdmImage[xyz] = mgdm.getFunctions()[0][xyz];
         }
+        
+        
         return;
     }
     
