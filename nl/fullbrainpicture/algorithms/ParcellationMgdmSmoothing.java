@@ -6,6 +6,7 @@ import nl.fullbrainpicture.utilities.*;
 import nl.fullbrainpicture.structures.*;
 import nl.fullbrainpicture.libraries.*;
 
+import org.apache.commons.math3.util.FastMath;
 
 /*
  * @author Pierre-Louis Bazin
@@ -51,7 +52,7 @@ public class ParcellationMgdmSmoothing {
 	
 	// create outputs
 	public final int[] getSmoothedLabel() { return segImage; }
-	public final float[] getSmoothedProba() { return mgdmImage; }
+	public final float[] getSmoothedProba() { return probaImage; }
 
 	public void execute(){
 
@@ -61,7 +62,7 @@ public class ParcellationMgdmSmoothing {
                 
 		if (probaImage==null) {
 		    probaImage = new float[nxyz];
-		    for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 1.0f;
+		    for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 0.5f;
 		}
 		
         // 3. Run MGDM!
@@ -80,6 +81,14 @@ public class ParcellationMgdmSmoothing {
             mgdmImage[xyz] = mgdm.getFunctions()[0][xyz];
         }
         
+        // 5. change probabilitiy maps to reflect the changes
+        for (int xyz=0;xyz<nx*ny*nz;xyz++) {
+            if (segImage[xyz]==-1) segImage[xyz] = 0;
+            
+            if (segImage[xyz]!=parcelImage[xyz] && mgdmImage[xyz]>0) {
+                probaImage[xyz] *= FastMath.exp(-mgdmImage[xyz]);
+            }
+        }
         
         return;
     }

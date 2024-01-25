@@ -16,17 +16,21 @@ public class MeshDistances {
     private int[] triangleList;
     
     private int[] labelList;
+    private float[] valueList;
     private float[] distance;
     private float[][] distances;
     private int[][] closest;
     
     private int depth=4;
+    private boolean normalize=false;
         
 	public final void setSurfacePoints(float[] val) { pointList = val; }
 	public final void setSurfaceTriangles(int[] val) { triangleList = val; }
 	public final void setSurfaceLabels(int[] val) { labelList = val; }
+	public final void setSurfaceValues(float[] val) { valueList = val; }
 	
 	public final void setDistanceDepth(int val) { depth=val; }
+	public final void setNormalizeWeights() { normalize=true; }
 
 	public final float[] 	getSurfacePoints() { return pointList; }
 	public final int[] 		getSurfaceTriangles() { return triangleList; }
@@ -44,6 +48,21 @@ public class MeshDistances {
     public final void computeFastDistances() {
         
         distance = MeshProcessing.computeInsideDistanceApproximation(pointList, triangleList, labelList);
+        
+    }
+
+    public final void computeWeightedDistances() {
+        
+        if (normalize) {
+            float max = 0.0f;
+            for (int n=0;n<valueList.length;n++)
+                if (valueList[n]>max) max = valueList[n];
+            if (max>0) 
+                for (int n=0;n<valueList.length;n++)
+                    valueList[n] /= max;
+        }
+        
+        distance = MeshProcessing.computeWeightedDistanceFunction(pointList, triangleList, valueList);
         
     }
 
@@ -240,6 +259,24 @@ public class MeshDistances {
         closest = new int[1][];
         distances[0] = path;
         closest[0] = connect;
+    }
+
+    public final void computeValueSkeleton() {
+        
+        int npt = pointList.length/3;
+        int[][] ngb = MeshProcessing.generatePointNeighborTable(npt, triangleList);
+
+        // label the points with only one value above
+        int[] skeleton = new int[npt];
+        for (int p=0;p<npt;p++) if (valueList[p]>0) {
+             int nsup=0;
+             for (int n=0;n<ngb[p].length;n++) {
+                 if (valueList[ngb[p][n]]>=valueList[p]) nsup++;
+             }
+             if (nsup==1) skeleton[p] = 1;
+             else if (nsup==0) skeleton[p] = 2;
+         }
+         labelList = skeleton;
     }
 
 }

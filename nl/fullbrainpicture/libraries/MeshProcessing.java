@@ -863,5 +863,178 @@ public class MeshProcessing {
         return;
         
     }
-    
+
+    public static final float[] computeWeightedDistanceFunction(float[] pts, int[] faces, float[] weights) {
+        
+        int npt = pts.length/3;
+        
+        int[][] ngbp =  generatePointNeighborTable(npt, faces);
+        int[][] ngbf =  generateFaceNeighborTable(npt, faces);
+        
+        BinaryHeapPair heap = new BinaryHeapPair(npt, BinaryHeapPair.MINTREE);
+		
+        // region growing from boundary inside
+        for (int p=0;p<npt;p++) if (weights[p]>0) {
+            // check neighborhhod
+            boolean boundary=false;
+            float mindist=1e9f;
+            for (int k=0;k<ngbp[p].length;k++) {
+                int nk = ngbp[p][k];
+                if (weights[nk]<=0) {
+                    boundary = true;
+                    // look for smallest line distance among neighboring faces
+                    for (int f=0;f<ngbf[p].length;f++) {
+                        int nf = ngbf[p][f];
+                        int p1=p, p2=p;
+                        if (faces[3*nf+0]==p) { 
+                            p1 = faces[3*nf+1];
+                            p2 = faces[3*nf+2];
+                        } else if (faces[3*nf+1]==p) {
+                            p1 = faces[3*nf+2];
+                            p2 = faces[3*nf+0];
+                        } else if (faces[3*nf+2]==p) {
+                            p1 = faces[3*nf+0];
+                            p2 = faces[3*nf+1];
+                        } else {
+                            System.out.print("!");
+                        }
+                        if (weights[p1]<=0 && weights[p2]<=0) {
+                            // distance to line between the two points if inside, distance to closest otherwise
+                            // d(P, L_P1P2) = || (P-P1) - (P-P1).(P2-P1) / || P2-P1 ||
+                            double d1 = FastMath.sqrt( (pts[3*p+X]-pts[3*p1+X])*(pts[3*p+X]-pts[3*p1+X])
+                                                      +(pts[3*p+Y]-pts[3*p1+Y])*(pts[3*p+Y]-pts[3*p1+Y])
+                                                      +(pts[3*p+Z]-pts[3*p1+Z])*(pts[3*p+Z]-pts[3*p1+Z]) );
+                            double d2 = FastMath.sqrt( (pts[3*p+X]-pts[3*p2+X])*(pts[3*p+X]-pts[3*p2+X])
+                                                      +(pts[3*p+Y]-pts[3*p2+Y])*(pts[3*p+Y]-pts[3*p2+Y])
+                                                      +(pts[3*p+Z]-pts[3*p2+Z])*(pts[3*p+Z]-pts[3*p2+Z]) );
+                            double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
+                                                       +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
+                                                       +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
+                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                      +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                      +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                            
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                        } else if  (weights[p1]<=0) {
+                            // distance P1 to P, P2
+                            double d1 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p+X])*(pts[3*p1+X]-pts[3*p+X])
+                                                      +(pts[3*p1+Y]-pts[3*p+Y])*(pts[3*p1+Y]-pts[3*p+Y])
+                                                      +(pts[3*p1+Z]-pts[3*p+Z])*(pts[3*p1+Z]-pts[3*p+Z]) );
+                            double d2 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
+                                                      +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
+                                                      +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
+                            double d12 = FastMath.sqrt( (pts[3*p+X]-pts[3*p2+X])*(pts[3*p+X]-pts[3*p2+X])
+                                                       +(pts[3*p+Y]-pts[3*p2+Y])*(pts[3*p+Y]-pts[3*p2+Y])
+                                                       +(pts[3*p+Z]-pts[3*p2+Z])*(pts[3*p+Z]-pts[3*p2+Z]) );
+                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p1+X]-pts[3*p+X])*(1.0f-(pts[3*p2+X]-pts[3*p+X])/d12) )
+                                                      +Numerics.square( (pts[3*p1+Y]-pts[3*p+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p+Y])/d12) )
+                                                      +Numerics.square( (pts[3*p1+Z]-pts[3*p+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p+Z])/d12) ) );
+                            
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                        } else if  (weights[p2]<=0) {
+                            // distance P2 to P, P1
+                            double d1 = FastMath.sqrt( (pts[3*p2+X]-pts[3*p+X])*(pts[3*p2+X]-pts[3*p+X])
+                                                      +(pts[3*p2+Y]-pts[3*p+Y])*(pts[3*p2+Y]-pts[3*p+Y])
+                                                      +(pts[3*p2+Z]-pts[3*p+Z])*(pts[3*p2+Z]-pts[3*p+Z]) );
+                            double d2 = FastMath.sqrt( (pts[3*p2+X]-pts[3*p1+X])*(pts[3*p2+X]-pts[3*p1+X])
+                                                      +(pts[3*p2+Y]-pts[3*p1+Y])*(pts[3*p2+Y]-pts[3*p1+Y])
+                                                      +(pts[3*p2+Z]-pts[3*p1+Z])*(pts[3*p2+Z]-pts[3*p1+Z]) );
+                            double d12 = FastMath.sqrt( (pts[3*p+X]-pts[3*p1+X])*(pts[3*p+X]-pts[3*p1+X])
+                                                       +(pts[3*p+Y]-pts[3*p1+Y])*(pts[3*p+Y]-pts[3*p1+Y])
+                                                       +(pts[3*p+Z]-pts[3*p1+Z])*(pts[3*p+Z]-pts[3*p1+Z]) );
+                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p2+X]-pts[3*p+X])*(1.0f-(pts[3*p1+X]-pts[3*p+X])/d12) )
+                                                      +Numerics.square( (pts[3*p2+Y]-pts[3*p+Y])*(1.0f-(pts[3*p1+Y]-pts[3*p+Y])/d12) )
+                                                      +Numerics.square( (pts[3*p2+Z]-pts[3*p+Z])*(1.0f-(pts[3*p1+Z]-pts[3*p+Z])/d12) ) );
+                            
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                        }
+                    }
+                }
+            }
+            if (boundary) {
+                heap.addValue(weights[p]*mindist, p, 1);
+            }
+        }
+        
+        boolean[] processed = new boolean[npt];
+        float[] distance = new float[npt];
+        
+        while (heap.isNotEmpty()) {
+             // extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int p = heap.getFirstId1();
+        	heap.removeFirst();
+
+			// if more than nmgdm labels have been found already, this is done
+			if (processed[p])  continue;
+			
+			// update the distance functions at the current level
+			distance[p] = dist;
+			processed[p]=true; // update the current level
+ 			
+			// find new neighbors
+			for (int k = 0; k<ngbp[p].length; k++) {
+				int nk = ngbp[p][k];
+				
+				if (weights[nk]>0 && !processed[nk]) {
+				    float mindist=1e9f;
+                    // look for smallest line distance among neighboring faces
+                    for (int f=0;f<ngbf[nk].length;f++) {
+                        int nf = ngbf[nk][f];
+                        int p1=nk, p2=nk;
+                        if (faces[3*nf+0]==nk) { 
+                            p1 = faces[3*nf+1];
+                            p2 = faces[3*nf+2];
+                        } else if (faces[3*nf+1]==nk) {
+                            p1 = faces[3*nf+2];
+                            p2 = faces[3*nf+0];
+                        } else if (faces[3*nf+2]==nk) {
+                            p1 = faces[3*nf+0];
+                            p2 = faces[3*nf+1];
+                        } else {
+                            System.out.print("!");
+                        }
+                        if (processed[p1] && processed[p2]) {                            
+                            // distance to line between the two points if inside, distance to closest otherwise
+                            // d(P, L_P1P2) = || (P-P1) - (P-P1).(P2-P1) / || P2-P1 ||
+                            
+                            // note that it is still an approximation, just a better one
+                            double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
+                                                      +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
+                                                      +(pts[3*nk+Z]-pts[3*p1+Z])*(pts[3*nk+Z]-pts[3*p1+Z]) );
+                            double d2 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p2+X])*(pts[3*nk+X]-pts[3*p2+X])
+                                                      +(pts[3*nk+Y]-pts[3*p2+Y])*(pts[3*nk+Y]-pts[3*p2+Y])
+                                                      +(pts[3*nk+Z]-pts[3*p2+Z])*(pts[3*nk+Z]-pts[3*p2+Z]) );
+                            double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
+                                                       +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
+                                                       +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
+                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                      +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                      +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                        
+                            mindist = Numerics.min(mindist, 0.5f*(distance[p1]+distance[p2])+(float)d0,
+                                                   distance[p1]+(float)d1, distance[p2]+(float)d2);
+                        } else if (processed[p1]) {
+                            double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
+                                                      +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
+                                                      +(pts[3*nk+Z]-pts[3*p1+Z])*(pts[3*nk+Z]-pts[3*p1+Z]) );
+
+                            mindist = Numerics.min(mindist, distance[p1]+(float)d1);
+                        } else if (processed[p2]) {
+                            double d2 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p2+X])*(pts[3*nk+X]-pts[3*p2+X])
+                                                      +(pts[3*nk+Y]-pts[3*p2+Y])*(pts[3*nk+Y]-pts[3*p2+Y])
+                                                      +(pts[3*nk+Z]-pts[3*p2+Z])*(pts[3*nk+Z]-pts[3*p2+Z]) );
+
+                            mindist = Numerics.min(mindist, distance[p2]+(float)d2);
+                        }
+                    }
+                    
+                    heap.addValue(weights[nk]*mindist, nk, 1);
+                }
+            }
+                    
+		}
+        return distance;
+    }
+
 }
