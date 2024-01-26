@@ -52,7 +52,7 @@ public class ParcellationMgdmSmoothing {
 	
 	// create outputs
 	public final int[] getSmoothedLabel() { return segImage; }
-	public final float[] getSmoothedProba() { return probaImage; }
+	public final float[] getSmoothedProba() { return mgdmImage; }
 
 	public void execute(){
 
