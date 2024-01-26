@@ -23,6 +23,7 @@ public class ParcellationMgdmSmoothing {
 	private float 	changeParam		=	0.001f;
 	private	float 	forceParam		= 	0.1f;
 	private float 	curvParam		=	0.4f;
+	private float 	distParam		=	2.0f;
 		
 	private String 	topologyParam	=	"wcs";
 	public static final String[] topoTypes = {"26/6", "6/26", "18/6", "6/18", "6/6", "wcs", "wco", "no"};
@@ -46,13 +47,14 @@ public class ParcellationMgdmSmoothing {
 	public final void setCurvatureWeight(float val) { curvParam = val; }
 	public final void setMaxIterations(int val) { iterationParam = val; }
 	public final void setMinChange(float val) { changeParam = val; }
+	public final void setDistanceWeight(float val) { distParam = val; }
 
 	public final void setTopology(String val) { topologyParam = val; }
 	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
 	
 	// create outputs
 	public final int[] getSmoothedLabel() { return segImage; }
-	public final float[] getSmoothedProba() { return mgdmImage; }
+	public final float[] getSmoothedProba() { return probaImage; }
 
 	public void execute(){
 
@@ -86,7 +88,7 @@ public class ParcellationMgdmSmoothing {
             if (segImage[xyz]==-1) segImage[xyz] = 0;
             
             if (segImage[xyz]!=parcelImage[xyz] && mgdmImage[xyz]>0) {
-                probaImage[xyz] *= FastMath.exp(-mgdmImage[xyz]);
+                probaImage[xyz] *= FastMath.exp(-mgdmImage[xyz]/distParam);
             }
         }
         
