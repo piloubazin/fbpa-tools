@@ -85,8 +85,8 @@ public class SpectralDenseMatrixEmbedding {
 	    
 	    // make reference embedding
 	    System.out.println("-- building reference embedding --");
-	    //matrixSimpleReferenceEmbedding();
-	    matrixReferenceJointEmbedding();
+	    matrixSimpleReferenceEmbedding();
+	    //matrixReferenceJointEmbedding();
 	    double[] refEmbedding = new double[npa*ndims];
 	    for (int n=0;n<npa*ndims;n++) {
 	        refEmbedding[n] = embeddingA[n];
@@ -1016,7 +1016,8 @@ public class SpectralDenseMatrixEmbedding {
         for (int dim=1;dim<ndims+1;dim++) {
             double norm=0.0;
             for (int n=0;n<npa;n++) {
-                embeddingA[n+(dim-1)*npa] = (double)(init[dim][n]/init[0][n]);
+                //embeddingA[n+(dim-1)*npa] = (double)(init[dim][n]/init[0][n]);
+                embeddingA[n+(dim-1)*npa] = (double)(init[dim][n]);
                 norm += embeddingA[n+(dim-1)*npa]*embeddingA[n+(dim-1)*npa];
             }
             norm = FastMath.sqrt(norm);
