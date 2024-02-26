@@ -19,22 +19,22 @@ public class SpectralDenseMatrixEmbedding {
 
     
 	// jist containers
-    private float[] matrixA;
-    private float[] embeddingA;
-    private float[] pointsA;
+    private double[] matrixA;
+    private double[] embeddingA;
+    private double[] pointsA;
     
-    private float[] matrixB;
-    private float[] embeddingB;
-    private float[] pointsB;
+    private double[] matrixB;
+    private double[] embeddingB;
+    private double[] pointsB;
     
-    private float[] matrixAB = null;
-    private float[] matrixAA = null;
+    private double[] matrixAB = null;
+    private double[] matrixAA = null;
     
 	private int ndims = 10;
 	private int msize = 800;
-	private float scale = 1.0f;
-	private float space = 1.0f;
-	private float link = 0.1f;
+	private double scale = 1.0f;
+	private double space = 1.0f;
+	private double link = 0.1f;
 	private boolean normalize=true;
 	
 	// numerical quantities
@@ -54,25 +54,25 @@ public class SpectralDenseMatrixEmbedding {
 	private static final boolean		verbose=true;
 
 	// create inputs
-	public final void setSubjectMatrix(float[] val) { matrixB = val; }
-	public final void setSubjectPoints(float[] val) { pointsB = val; }
+	public final void setSubjectMatrix(double[] val) { matrixB = val; }
+	public final void setSubjectPoints(double[] val) { pointsB = val; }
 	
-	public final void setReferenceMatrix(float[] val) { matrixA = val; }
-	public final void setReferencePoints(float[] val) { pointsA = val; }
+	public final void setReferenceMatrix(double[] val) { matrixA = val; }
+	public final void setReferencePoints(double[] val) { pointsA = val; }
 	
-	public final void setCorrespondenceMatrix(float[] val) { matrixAB = val; }
-	public final void setRefCorrespondenceMatrix(float[] val) { matrixAA = val; }
+	public final void setCorrespondenceMatrix(double[] val) { matrixAB = val; }
+	public final void setRefCorrespondenceMatrix(double[] val) { matrixAA = val; }
 
 	public final void setDimensions(int val) { ndims = val; }
 	public final void setMatrixSize(int val) { msize = val; }
-	public final void setDistanceScale(float val) { scale = val; }
-	public final void setSpatialScale(float val) { space = val; }
-	public final void setLinkingFactor(float val) { link = val; }
+	public final void setDistanceScale(double val) { scale = val; }
+	public final void setSpatialScale(double val) { space = val; }
+	public final void setLinkingFactor(double val) { link = val; }
 	public final void setNormalize(boolean val) { normalize = val; }
 					
 	// create outputs
-	public final float[] 	getSubjectEmbeddings() { return embeddingB; }
-	public final float[] 	getReferenceEmbeddings() { return embeddingA; }
+	public final double[] 	getSubjectEmbeddings() { return embeddingB; }
+	public final double[] 	getReferenceEmbeddings() { return embeddingA; }
 
 	public void matrixRotatedSpatialEmbedding() {
 
@@ -87,7 +87,7 @@ public class SpectralDenseMatrixEmbedding {
 	    System.out.println("-- building reference embedding --");
 	    //matrixSimpleReferenceEmbedding();
 	    matrixReferenceJointEmbedding();
-	    float[] refEmbedding = new float[npa*ndims];
+	    double[] refEmbedding = new double[npa*ndims];
 	    for (int n=0;n<npa*ndims;n++) {
 	        refEmbedding[n] = embeddingA[n];
 	    }
@@ -125,7 +125,7 @@ public class SpectralDenseMatrixEmbedding {
 	        }
 	        System.out.println("]");
 	    }
-	    float[] rotated = new float[npb*ndims];
+	    double[] rotated = new double[npb*ndims];
         for (int n=0;n<ndims;n++) {
             double norm=0.0;
             for (int j=0;j<npb;j++) {
@@ -133,7 +133,7 @@ public class SpectralDenseMatrixEmbedding {
 	            for (int m=0;m<ndims;m++) {
 	                val += embeddingB[j+m*npb]*rot[m][n];
 	            }
-	            rotated[j+n*npb] = (float)val;
+	            rotated[j+n*npb] = (double)val;
 	            norm += val*val;
 	        }
 	        norm = FastMath.sqrt(norm);
@@ -146,7 +146,7 @@ public class SpectralDenseMatrixEmbedding {
         }
         // for checking: not really needed if all goes well
         System.out.println("-- rotating reference embedding --");
-	    rotated = new float[npa*ndims];
+	    rotated = new double[npa*ndims];
 	    for (int n=0;n<ndims;n++) {
 	        double norm=0.0;
             for (int i=0;i<npa;i++) {
@@ -154,7 +154,7 @@ public class SpectralDenseMatrixEmbedding {
 	            for (int m=0;m<ndims;m++) {
 	                val += embeddingA[i+m*npa]*rot[m][n];
 	            }
-	            rotated[i+n*npa] = (float)val;
+	            rotated[i+n*npa] = (double)val;
 	            norm += val*val;
 	        }
 	        norm = FastMath.sqrt(norm);
@@ -309,11 +309,11 @@ public class SpectralDenseMatrixEmbedding {
             }
         }
         
-        embeddingA = new float[npa*ndims];
+        embeddingA = new double[npa*ndims];
         for (int dim=2;dim<ndims+2;dim++) {
             double norm=0.0;
             for (int n=0;n<npa;n++) {
-                embeddingA[n+(dim-2)*npa] = (float)(init[dim][n]);
+                embeddingA[n+(dim-2)*npa] = (double)(init[dim][n]);
                 norm += embeddingA[n+(dim-2)*npa]*embeddingA[n+(dim-2)*npa];
             }
             norm = FastMath.sqrt(norm);
@@ -342,11 +342,11 @@ public class SpectralDenseMatrixEmbedding {
             }
         }
         
-        embeddingB = new float[npb*ndims];
+        embeddingB = new double[npb*ndims];
         for (int dim=2;dim<ndims+2;dim++) {
             double norm=0.0;
             for (int n=0;n<npb;n++) {
-                embeddingB[n+(dim-2)*npb] = (float)(init[dim][n]);
+                embeddingB[n+(dim-2)*npb] = (double)(init[dim][n]);
                 norm += embeddingB[n+(dim-2)*npb]*embeddingB[n+(dim-2)*npb];
             }
             norm = FastMath.sqrt(norm);
@@ -574,14 +574,14 @@ public class SpectralDenseMatrixEmbedding {
             }
         }
         
-        embeddingA = new float[npa*ndims];
-        embeddingB = new float[npb*ndims];
+        embeddingA = new double[npa*ndims];
+        embeddingB = new double[npb*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             
             double norm=0.0;
             for (int n=0;n<npa;n++) {
-                //embeddingA[n+(dim-1)*npa] = (float)(initA[dim][n]/initA[0][n]);
-                embeddingA[n+(dim-1)*npa] = (float)(initA[dim][n]);
+                //embeddingA[n+(dim-1)*npa] = (double)(initA[dim][n]/initA[0][n]);
+                embeddingA[n+(dim-1)*npa] = (double)(initA[dim][n]);
                 norm += embeddingA[n+(dim-1)*npa]*embeddingA[n+(dim-1)*npa];
             }
             norm = FastMath.sqrt(norm);
@@ -590,8 +590,8 @@ public class SpectralDenseMatrixEmbedding {
             }
             norm=0.0;
             for (int n=0;n<npb;n++) {
-                //embeddingB[n+(dim-1)*npb] = (float)(initB[dim][n]/initB[0][n]);
-                embeddingB[n+(dim-1)*npb] = (float)(initB[dim][n]);
+                //embeddingB[n+(dim-1)*npb] = (double)(initB[dim][n]/initB[0][n]);
+                embeddingB[n+(dim-1)*npb] = (double)(initB[dim][n]);
                 norm += embeddingB[n+(dim-1)*npb]*embeddingB[n+(dim-1)*npb];
             }
             norm = FastMath.sqrt(norm);
@@ -673,7 +673,7 @@ public class SpectralDenseMatrixEmbedding {
         for (int n=0;n<msize*stepa;n+=stepa) {
             for (int m=0;m<msize*stepa;m+=stepa) {
                 if (matrixAA!=null) {
-                    double dist = matrixAB[n+m*npa];
+                    double dist = matrixAA[n+m*npa];
                 
                     Azero[n/stepa][msize+m/stepa] = link/(1.0+dist/space);
                     //Azero[n/stepa][msize+m/stepb] = link*FastMath.exp(-dist/(space*space));
@@ -775,13 +775,13 @@ public class SpectralDenseMatrixEmbedding {
             }
         }
                
-        embeddingA = new float[npa*ndims];
+        embeddingA = new double[npa*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             
             double norm=0.0;
             for (int n=0;n<npa;n++) {
-                //embeddingA[n+(dim-1)*npa] = (float)(initA[dim][n]/initA[0][n]);
-                embeddingA[n+(dim-1)*npa] = (float)(initA[dim][n]);
+                //embeddingA[n+(dim-1)*npa] = (double)(initA[dim][n]/initA[0][n]);
+                embeddingA[n+(dim-1)*npa] = (double)(initA[dim][n]);
                 norm += embeddingA[n+(dim-1)*npa]*embeddingA[n+(dim-1)*npa];
             }
             norm = FastMath.sqrt(norm);
@@ -805,7 +805,23 @@ public class SpectralDenseMatrixEmbedding {
             if (prod<min) min = prod;
         }
         System.out.println("["+min+" | "+mean/num+" | "+max+"]");
-                
+        
+        // for direct output, not needed otherwise
+        embeddingB = new double[npa*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            
+            double norm=0.0;
+            for (int n=0;n<npa;n++) {
+                //embeddingA[n+(dim-1)*npa] = (double)(initA[dim][n]/initA[0][n]);
+                embeddingB[n+(dim-1)*npa] = (double)(initA[dim][n]);
+                norm += embeddingB[n+(dim-1)*npa]*embeddingB[n+(dim-1)*npa];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<npa;n++) {
+                embeddingB[n+(dim-1)*npa] /= norm;
+            }
+        }        
+        
 		return;
 	}
 	
@@ -886,12 +902,12 @@ public class SpectralDenseMatrixEmbedding {
             }
         }
         
-        embeddingB = new float[npb*ndims];
+        embeddingB = new double[npb*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             double norm=0.0;
             for (int n=0;n<npb;n++) {
-                //embeddingB[n+(dim-1)*npb] = (float)(init[dim][n]/init[0][n]);
-                embeddingB[n+(dim-1)*npb] = (float)(init[dim][n]);
+                //embeddingB[n+(dim-1)*npb] = (double)(init[dim][n]/init[0][n]);
+                embeddingB[n+(dim-1)*npb] = (double)(init[dim][n]);
                 norm += embeddingB[n+(dim-1)*npb]*embeddingB[n+(dim-1)*npb];
             }
             norm = FastMath.sqrt(norm);
@@ -996,11 +1012,11 @@ public class SpectralDenseMatrixEmbedding {
             }
         }
         
-        embeddingA = new float[npa*ndims];
+        embeddingA = new double[npa*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             double norm=0.0;
             for (int n=0;n<npa;n++) {
-                embeddingA[n+(dim-1)*npa] = (float)(init[dim][n]/init[0][n]);
+                embeddingA[n+(dim-1)*npa] = (double)(init[dim][n]/init[0][n]);
                 norm += embeddingA[n+(dim-1)*npa]*embeddingA[n+(dim-1)*npa];
             }
             norm = FastMath.sqrt(norm);

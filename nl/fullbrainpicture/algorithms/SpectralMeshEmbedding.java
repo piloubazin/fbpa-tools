@@ -30,6 +30,7 @@ public class SpectralMeshEmbedding {
 	private int ndims = 10;
 	private int msize = 800;
 	private float scale = 1.0f;
+	private float link = 1.0f;
 	
 	// numerical quantities
 	private static final	double	INVSQRT2 = 1.0/FastMath.sqrt(2.0);
@@ -58,727 +59,12 @@ public class SpectralMeshEmbedding {
 	public final void setDimensions(int val) { ndims = val; }
 	public final void setMatrixSize(int val) { msize = val; }
 	public final void setDistanceScale(float val) { scale = val; }
+	public final void setLinkingFactor(float val) { link = val; }
 					
 	// create outputs
 	public final float[] 	getEmbeddingValues() { return embeddingList; }
 	public final float[] 	getReferenceEmbeddingValues() { return embeddingListRef; }
 	
-	public void pointDistanceEmbedding(){
-	    
-	    // data size
-	    int npt = pointList.length/3;
-	    
-	    // 1. build the partial representation
-	    int step = Numerics.floor(npt/msize);
-	    System.out.println("step size: "+step);
-        
-	    //build Laplacian / Laplace-Beltrami operator (just Laplace for now)
-	    
-	    // degree is quadratic: replace by approx (needs an extra matrix inversion
-	    double[][] Azero = new double[msize][msize];
-	    
-	    for (int n=0;n<msize*step;n+=step) {
-	        
-	        // self affinitiy should be 1?
-            Azero[n/step][n/step] = 1.0;
-	        
-	        for (int m=n+step;m<msize*step;m+=step) {	            
-	            // for now: approximate geodesic distance with Euclidean distance
-	            // note that it is not an issue for data-based distance methods
-	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-	                         
-	            Azero[n/step][m/step] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[m/step][n/step] = Azero[n/step][m/step];
-            }
-        }
-	    // First decomposition for degree: A
-        RealMatrix mtx = new Array2DRowRealMatrix(Azero);
-        EigenDecomposition eig = new EigenDecomposition(mtx);
-
-        double[][] Ainv = new double[msize][msize];
-	    for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Ainv[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                Ainv[n][m] += eig.getV().getEntry(n,p)
-                                *1.0/eig.getRealEigenvalue(p)
-                                *eig.getV().getEntry(m,p);
-            }
-        }
-        mtx = null;
-        eig = null;
-
-	    double[] a0r = new double[msize];
-	    double[] b0r = new double[msize];
-	    
-	    // first the rows from A, B^T
-	    /* not needed
-	    for (int n=0;n<msize*step;n+=step) {
-	        a0r[n/step] = 0.0;
-	        b0r[n/step] = 0.0;
-	    }*/
-	    for (int n=0;n<msize*step;n+=step) {
-	        for (int m=0;m<msize*step;m+=step) {	    
-	            /*
-	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-	                         
-	            a0r[n/step] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	            */
-	            a0r[n/step] += Azero[n/step][m/step];
-	        }
-	        for (int m=0;m<npt;m++) if (m%step!=0 || m>=msize*step) {
-	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-	            
-	            b0r[n/step] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	        }
-	    }
-	    // convolve rows of B^T with A^-1
-	    double[] ainvb0r = new double[msize];
-	    for (int n=0;n<msize;n++) {
-	        ainvb0r[n] = 0.0;
-	        for (int m=0;m<msize;m++) {
-	            ainvb0r[n] += Ainv[n][m]*b0r[m];
-	        }
-	    }
-	    
-	    // finally the degree
-	    double[] degree = new double[npt];
-	    /*
-	    for (int n=0;n<npt;n++) {
-	        degree[n] = 0.0;
-	    }*/
-	    for (int n=0;n<msize*step;n+=step) {
-	        degree[n] = a0r[n/step]+b0r[n/step];
-	    }
-	    for (int n=0;n<npt;n++) if (n%step!=0 || n>=msize*step) {
-	        for (int m=0;m<msize*step;m+=step) {	
-                double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-                             +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-                             +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-            
-                degree[n] += (1.0 + ainvb0r[m/step])*1.0/(1.0+FastMath.sqrt(dist)/scale);
-            }
-	    }
-
-        System.out.println("build first approximation");
-        
-	    // square core matrix
-	    double[][] Acore = new double[msize][msize];
-	    
-	    for (int n=0;n<msize*step;n+=step) {
-	        
-            Acore[n/step][n/step] = 1.0;
-	        
-	        for (int m=n+step;m<msize*step;m+=step) {	            
-	            // for now: approximate geodesic distance with Euclidean distance
-	            // note that it is not an issue for data-based distance methods
-	            /*
-	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-	                         
-	            Acore[n/step][m/step] = -1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n];
-                Acore[m/step][n/step] = -1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[m];
-                */
-                Acore[n/step][m/step] = -Azero[n/step][m/step]/degree[n];
-                Acore[m/step][n/step] = -Azero[m/step][n/step]/degree[m];
-            }
-        }
-	    // First decomposition: A
-        mtx = new Array2DRowRealMatrix(Acore);
-        eig = new EigenDecomposition(mtx);
-        
-        // sort eigenvalues: not needed, already done :)
-        /*
-        embeddingList = new float[pointList.length/3*ndims];
-        for (int d=0;d<ndims;d++) {
-            System.out.println("eigenvalue "+(d+1)+": "+eig.getRealEigenvalue(d));
-            for (int n=0;n<msize*step;n+=step) {
-                embeddingList[n+d*pointList.length/3] = (float)eig.getEigenvector(d).getEntry(n/step);
-            }
-        }
-        */
-        System.out.println("build orthogonalization");
-        
-        // build S = A + A^-1/2 BB^T A^-1/2
-        double[][] sqAinv = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            sqAinv[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                sqAinv[n][m] += eig.getV().getEntry(n,p)
-                                *1.0/FastMath.sqrt(eig.getRealEigenvalue(p))
-                                *eig.getV().getEntry(m,p);
-            }
-        }
-        mtx = null;
-        eig = null;
-
-        System.out.print(".");        
-
-        // banded matrix is too big, we only compute BB^T
-        double[][] BBt = new double[msize][msize];
-        
-        for (int n=0;n<msize*step;n+=step) {
-	        for (int m=0;m<msize*step;m+=step) {
-	            BBt[n/step][m/step] = 0.0;
-	            for (int j=0;j<npt;j++) if (j%step!=0 || j>=msize*step) {
-	                double distN = Numerics.square(pointList[3*n+X]-pointList[3*j+X])
-	                              +Numerics.square(pointList[3*n+Y]-pointList[3*j+Y])
-	                              +Numerics.square(pointList[3*n+Z]-pointList[3*j+Z]);
-	                              
-	                double distM = Numerics.square(pointList[3*m+X]-pointList[3*j+X])
-	                              +Numerics.square(pointList[3*m+Y]-pointList[3*j+Y])
-	                              +Numerics.square(pointList[3*m+Z]-pointList[3*j+Z]);
-	                              
-	                BBt[n/step][m/step] += 1.0/(1.0+FastMath.sqrt(distN)/scale)/degree[j]
-	                                      *1.0/(1.0+FastMath.sqrt(distM)/scale)/degree[j];
-	            }
-	        }
-	    }
-	    System.out.print("..");        
-        	    
-        // update banded matrix
-        double[][] sqAinvBBt = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            sqAinvBBt[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                sqAinvBBt[n][m] += sqAinv[n][p]*BBt[p][m];
-            }
-        }
-        BBt = null;
-        
-	    System.out.print("...");        
-
-        double[][] Afull = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Afull[n][m] = Acore[n][m];
-            for (int p=0;p<msize;p++) {
-                Afull[n][m] += sqAinvBBt[n][p]*sqAinv[p][m];
-            }
-        }
-        sqAinvBBt = null;
-
-        System.out.print("....");        
-
-        // second eigendecomposition: S = A + A^-1/2 BB^T A^-1/2
-        mtx = new Array2DRowRealMatrix(Afull);
-        eig = new EigenDecomposition(mtx);
-        
-        System.out.println("\nexport result to maps");
-
-        // final result A^-1/2 V D^-1/2
-        double[][] Vortho = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Vortho[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                Vortho[n][m] += sqAinv[n][p]
-                                *eig.getV().getEntry(p,m)
-                                *1.0/FastMath.sqrt(eig.getRealEigenvalue(m));
-            }
-        }
-        double[] evals = new double[ndims];
-        for (int d=0;d<ndims;d++) evals[d] = eig.getRealEigenvalue(d);
-        mtx = null;
-        eig = null;
-        
-        // pass on to global result
-        embeddingList = new float[npt*ndims];
-        
-        for (int d=0;d<ndims;d++) {
-            System.out.println("eigenvalue "+(d+1)+": "+evals[d]);
-            for (int n=0;n<npt;n++) {
-                double embed=0.0;
-                for (int m=0;m<msize*step;m+=step) {
-                    
-                    double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-                                 +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-                                 +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-                                 
-                    embed += 1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n]*Vortho[m/step][d];
-                }
-                embeddingList[n+d*npt] = (float)embed;
-            }
-        }
-        
-		return;
-	}
-
-	public void pointDistanceReferenceEmbedding(){
-	    
-	    // data size
-	    int nrf = pointListRef.length/3;
-	    
-	    // 1. build the partial representation
-	    int step = Numerics.floor(nrf/msize);
-	    System.out.println("step size: "+step);
-        
-	    //build Laplacian / Laplace-Beltrami operator (just Laplace for now)
-	    
-	    // degree is quadratic: replace by approx (needs an extra matrix inversion
-	    double[][] Azero = new double[msize][msize];
-	    
-	    for (int n=0;n<msize*step;n+=step) {
-	        
-	        // self affinitiy should be 1?
-            Azero[n/step][n/step] = 1.0;
-	        
-	        for (int m=n+step;m<msize*step;m+=step) {	            
-	            // for now: approximate geodesic distance with Euclidean distance
-	            // note that it is not an issue for data-based distance methods
-	            double dist = Numerics.square(pointListRef[3*n+X]-pointListRef[3*m+X])
-	                         +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*m+Y])
-	                         +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*m+Z]);
-	                         
-	            Azero[n/step][m/step] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[m/step][n/step] = Azero[n/step][m/step];
-            }
-        }
-	    // First decomposition for degree: A
-        RealMatrix mtx = new Array2DRowRealMatrix(Azero);
-        EigenDecomposition eig = new EigenDecomposition(mtx);
-
-        double[][] Ainv = new double[msize][msize];
-	    for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Ainv[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                Ainv[n][m] += eig.getV().getEntry(n,p)
-                                *1.0/eig.getRealEigenvalue(p)
-                                *eig.getV().getEntry(m,p);
-            }
-        }
-        mtx = null;
-        eig = null;
-
-	    double[] a0r = new double[msize];
-	    double[] b0r = new double[msize];
-	    
-	    // first the rows from A, B^T
-	    for (int n=0;n<msize*step;n+=step) {
-	        for (int m=0;m<msize*step;m+=step) {	    
-	            a0r[n/step] += Azero[n/step][m/step];
-	        }
-	        for (int m=0;m<nrf;m++) if (m%step!=0 || m>=msize*step) {
-	            double dist = Numerics.square(pointListRef[3*n+X]-pointListRef[3*m+X])
-	                         +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*m+Y])
-	                         +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*m+Z]);
-	            
-	            b0r[n/step] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	        }
-	    }
-	    // convolve rows of B^T with A^-1
-	    double[] ainvb0r = new double[msize];
-	    for (int n=0;n<msize;n++) {
-	        ainvb0r[n] = 0.0;
-	        for (int m=0;m<msize;m++) {
-	            ainvb0r[n] += Ainv[n][m]*b0r[m];
-	        }
-	    }
-	    
-	    // finally the degree
-	    double[] degree = new double[nrf];
-	    for (int n=0;n<msize*step;n+=step) {
-	        degree[n] = a0r[n/step]+b0r[n/step];
-	    }
-	    for (int n=0;n<nrf;n++) if (n%step!=0 || n>=msize*step) {
-	        for (int m=0;m<msize*step;m+=step) {	
-                double dist = Numerics.square(pointListRef[3*n+X]-pointListRef[3*m+X])
-                             +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*m+Y])
-                             +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*m+Z]);
-            
-                degree[n] += (1.0 + ainvb0r[m/step])*1.0/(1.0+FastMath.sqrt(dist)/scale);
-            }
-	    }
-
-        System.out.println("build first approximation");
-        
-	    // square core matrix
-	    double[][] Acore = new double[msize][msize];
-	    
-	    for (int n=0;n<msize*step;n+=step) {
-	        
-            Acore[n/step][n/step] = 1.0;
-	        
-	        for (int m=n+step;m<msize*step;m+=step) {	            
-	            // for now: approximate geodesic distance with Euclidean distance
-	            // note that it is not an issue for data-based distance methods
-                Acore[n/step][m/step] = -Azero[n/step][m/step]/degree[n];
-                Acore[m/step][n/step] = -Azero[m/step][n/step]/degree[m];
-            }
-        }
-	    // First decomposition: A
-        mtx = new Array2DRowRealMatrix(Acore);
-        eig = new EigenDecomposition(mtx);
-        
-        // sort eigenvalues: not needed, already done :)
-        System.out.println("build orthogonalization");
-        
-        // build S = A + A^-1/2 BB^T A^-1/2
-        double[][] sqAinv = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            sqAinv[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                sqAinv[n][m] += eig.getV().getEntry(n,p)
-                                *1.0/FastMath.sqrt(eig.getRealEigenvalue(p))
-                                *eig.getV().getEntry(m,p);
-            }
-        }
-        mtx = null;
-        eig = null;
-
-        System.out.print(".");        
-
-        // banded matrix is too big, we only compute BB^T
-        double[][] BBt = new double[msize][msize];
-        
-        for (int n=0;n<msize*step;n+=step) {
-	        for (int m=0;m<msize*step;m+=step) {
-	            BBt[n/step][m/step] = 0.0;
-	            for (int j=0;j<nrf;j++) if (j%step!=0 || j>=msize*step) {
-	                double distN = Numerics.square(pointListRef[3*n+X]-pointListRef[3*j+X])
-	                              +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*j+Y])
-	                              +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*j+Z]);
-	                              
-	                double distM = Numerics.square(pointListRef[3*m+X]-pointListRef[3*j+X])
-	                              +Numerics.square(pointListRef[3*m+Y]-pointListRef[3*j+Y])
-	                              +Numerics.square(pointListRef[3*m+Z]-pointListRef[3*j+Z]);
-	                              
-	                BBt[n/step][m/step] += 1.0/(1.0+FastMath.sqrt(distN)/scale)/degree[j]
-	                                      *1.0/(1.0+FastMath.sqrt(distM)/scale)/degree[j];
-	            }
-	        }
-	    }
-	    System.out.print("..");        
-        	    
-        // update banded matrix
-        double[][] sqAinvBBt = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            sqAinvBBt[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                sqAinvBBt[n][m] += sqAinv[n][p]*BBt[p][m];
-            }
-        }
-        BBt = null;
-        
-	    System.out.print("...");        
-
-        double[][] Afull = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Afull[n][m] = Acore[n][m];
-            for (int p=0;p<msize;p++) {
-                Afull[n][m] += sqAinvBBt[n][p]*sqAinv[p][m];
-            }
-        }
-        sqAinvBBt = null;
-
-        System.out.print("....");        
-
-        // second eigendecomposition: S = A + A^-1/2 BB^T A^-1/2
-        mtx = new Array2DRowRealMatrix(Afull);
-        eig = new EigenDecomposition(mtx);
-        
-        System.out.println("\nexport result to maps");
-
-        // final result A^-1/2 V D^-1/2
-        double[][] Vortho = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Vortho[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                Vortho[n][m] += sqAinv[n][p]
-                                *eig.getV().getEntry(p,m)
-                                *1.0/FastMath.sqrt(eig.getRealEigenvalue(m));
-            }
-        }
-        double[] evals = new double[ndims];
-        for (int d=0;d<ndims;d++) evals[d] = eig.getRealEigenvalue(d);
-        mtx = null;
-        eig = null;
-        
-        // pass on to global result
-        embeddingListRef = new float[nrf*ndims];
-        
-        for (int d=0;d<ndims;d++) {
-            System.out.println("eigenvalue "+(d+1)+": "+evals[d]);
-            for (int n=0;n<nrf;n++) {
-                double embed=0.0;
-                for (int m=0;m<msize*step;m+=step) {
-                    
-                    double dist = Numerics.square(pointListRef[3*n+X]-pointListRef[3*m+X])
-                                 +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*m+Y])
-                                 +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*m+Z]);
-                                 
-                    embed += 1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n]*Vortho[m/step][d];
-                }
-                embeddingListRef[n+d*nrf] = (float)embed;
-            }
-        }
-        
-		return;
-	}
-	
-	public void pointDistanceJointEmbedding() {
-	    // here we simply stack the vectors and use the same distance (spatial coordinates)
-	    // for intra- and inter- mesh correspondences
-	    
-	    // data size
-	    int npt = pointList.length/3;
-	    int nrf = pointListRef.length/3;
-	    
-	    // 1. build the partial representation
-	    int step = Numerics.floor(npt/msize+nrf/msize);
-	    System.out.println("step size: "+step);
-	    
-	    //build Laplacian / Laplace-Beltrami operator (just Laplace for now)
-	    double[] degree = new double[npt+nrf];
-	    for (int n=0;n<npt;n++) {
-	        degree[n] = 0.0;
-	        for (int m=0;m<npt;m++) {
-	            double dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-	                         +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-	                         +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-	            
-	            degree[n] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	        }
-	        for (int m=0;m<nrf;m++) {
-	            double dist = Numerics.square(pointList[3*n+X]-pointListRef[3*m+X])
-	                         +Numerics.square(pointList[3*n+Y]-pointListRef[3*m+Y])
-	                         +Numerics.square(pointList[3*n+Z]-pointListRef[3*m+Z]);
-	            
-	            degree[n] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	        }
-	    }
-	    for (int n=0;n<nrf;n++) {
-	        degree[n+pointList.length/3] = 0.0;
-	        for (int m=0;m<pointList.length/3;m++) {
-	            double dist = Numerics.square(pointListRef[3*n+X]-pointList[3*m+X])
-	                         +Numerics.square(pointListRef[3*n+Y]-pointList[3*m+Y])
-	                         +Numerics.square(pointListRef[3*n+Z]-pointList[3*m+Z]);
-	            
-	            degree[n+npt] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	        }
-	        for (int m=0;m<nrf;m++) {
-	            double dist = Numerics.square(pointListRef[3*n+X]-pointListRef[3*m+X])
-	                         +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*m+Y])
-	                         +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*m+Z]);
-	            
-	            degree[n+npt] += 1.0/(1.0+FastMath.sqrt(dist)/scale);
-	        }
-	    }
-        
-	    // square core matrix
-	    double[][] Acore = new double[msize][msize];
-	    
-	    for (int n=0;n<msize*step;n+=step) {
-	        
-            Acore[n/step][n/step] = 1.0;
-	        
-	        for (int m=n+step;m<msize*step;m+=step) {
-	            double dist;
-	            if (n<npt && m<npt) {
-	                dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-	                      +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-	                      +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-	            } else if (n>=npt && m<npt) {
-	                dist = Numerics.square(pointListRef[3*(n-npt)+X]-pointList[3*m+X])
-	                      +Numerics.square(pointListRef[3*(n-npt)+Y]-pointList[3*m+Y])
-	                      +Numerics.square(pointListRef[3*(n-npt)+Z]-pointList[3*m+Z]);
-	            } else if (n<npt && m>=npt) {
-	                dist = Numerics.square(pointList[3*n+X]-pointListRef[3*(m-npt)+X])
-	                      +Numerics.square(pointList[3*n+Y]-pointListRef[3*(m-npt)+Y])
-	                      +Numerics.square(pointList[3*n+Z]-pointListRef[3*(m-npt)+Z]);
-	            } else {
-	                dist = Numerics.square(pointListRef[3*(n-npt)+X]-pointListRef[3*(m-npt)+X])
-	                      +Numerics.square(pointListRef[3*(n-npt)+Y]-pointListRef[3*(m-npt)+Y])
-	                      +Numerics.square(pointListRef[3*(n-npt)+Z]-pointListRef[3*(m-npt)+Z]);
-	            }        
-	            Acore[n/step][m/step] = -1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n];
-                Acore[m/step][n/step] = -1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[m];
-            }
-        }
-	    // First decomposition: A
-        RealMatrix mtx = new Array2DRowRealMatrix(Acore);
-        EigenDecomposition eig = new EigenDecomposition(mtx);
-        
-        // sort eigenvalues: not needed, already done :)
-        /*
-        embeddingList = new float[pointList.length/3*ndims];
-        for (int d=0;d<ndims;d++) {
-            System.out.println("eigenvalue "+(d+1)+": "+eig.getRealEigenvalue(d));
-            for (int n=0;n<msize*step;n+=step) {
-                embeddingList[n+d*pointList.length/3] = (float)eig.getEigenvector(d).getEntry(n/step);
-            }
-        }
-        */
-        
-        // build S = A + A^-1/2 BB^T A^-1/2
-        double[][] sqAinv = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            sqAinv[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                sqAinv[n][m] += eig.getV().getEntry(n,p)
-                                *1.0/FastMath.sqrt(eig.getRealEigenvalue(p))
-                                *eig.getV().getEntry(m,p);
-            }
-        }
-        mtx = null;
-        eig = null;
-        
-        // banded matrix is too big, we only compute BB^T
-        double[][] BBt = new double[msize][msize];
-        
-        for (int n=0;n<msize*step;n+=step) {
-	        for (int m=0;m<msize*step;m+=step) {
-	            BBt[n/step][m/step] = 0.0;
-	            for (int j=0;j<npt;j++) if (j%step!=0) {
-	                double distN;
-	                if (n<npt) {
-	                    distN = Numerics.square(pointList[3*n+X]-pointList[3*j+X])
-	                           +Numerics.square(pointList[3*n+Y]-pointList[3*j+Y])
-	                           +Numerics.square(pointList[3*n+Z]-pointList[3*j+Z]);
-	                } else {
-	                    distN = Numerics.square(pointListRef[3*(n-npt)+X]-pointList[3*j+X])
-	                           +Numerics.square(pointListRef[3*(n-npt)+Y]-pointList[3*j+Y])
-	                           +Numerics.square(pointListRef[3*(n-npt)+Z]-pointList[3*j+Z]);
-	                }
-	                double distM;
-	                if (m<npt) {
-	                    distM = Numerics.square(pointList[3*m+X]-pointList[3*j+X])
-	                           +Numerics.square(pointList[3*m+Y]-pointList[3*j+Y])
-	                           +Numerics.square(pointList[3*m+Z]-pointList[3*j+Z]);
-	                } else {   
-	                    distM = Numerics.square(pointListRef[3*(m-npt)+X]-pointList[3*j+X])
-	                           +Numerics.square(pointListRef[3*(m-npt)+Y]-pointList[3*j+Y])
-	                           +Numerics.square(pointListRef[3*(m-npt)+Z]-pointList[3*j+Z]);
-	                }
-	                BBt[n/step][m/step] += 1.0/(1.0+FastMath.sqrt(distN)/scale)/degree[j]
-	                                      *1.0/(1.0+FastMath.sqrt(distM)/scale)/degree[j];
-	            }
-	            for (int j=npt;j<npt+nrf;j++) if (j%step!=0) {
-	                double distN;
-	                if (n<npt) {
-	                    distN = Numerics.square(pointList[3*n+X]-pointListRef[3*(j-npt)+X])
-	                           +Numerics.square(pointList[3*n+Y]-pointListRef[3*(j-npt)+Y])
-	                           +Numerics.square(pointList[3*n+Z]-pointListRef[3*(j-npt)+Z]);
-	                } else {
-	                    distN = Numerics.square(pointListRef[3*(n-npt)+X]-pointListRef[3*(j-npt)+X])
-	                           +Numerics.square(pointListRef[3*(n-npt)+Y]-pointListRef[3*(j-npt)+Y])
-	                           +Numerics.square(pointListRef[3*(n-npt)+Z]-pointListRef[3*(j-npt)+Z]);
-	                }
-	                double distM;
-	                if (m<npt) {
-	                    distM = Numerics.square(pointList[3*m+X]-pointListRef[3*(j-npt)+X])
-	                           +Numerics.square(pointList[3*m+Y]-pointListRef[3*(j-npt)+Y])
-	                           +Numerics.square(pointList[3*m+Z]-pointListRef[3*(j-npt)+Z]);
-	                } else {   
-	                    distM = Numerics.square(pointListRef[3*(m-npt)+X]-pointListRef[3*(j-npt)+X])
-	                           +Numerics.square(pointListRef[3*(m-npt)+Y]-pointListRef[3*(j-npt)+Y])
-	                           +Numerics.square(pointListRef[3*(m-npt)+Z]-pointListRef[3*(j-npt)+Z]);
-	                }
-	                BBt[n/step][m/step] += 1.0/(1.0+FastMath.sqrt(distN)/scale)/degree[j]
-	                                      *1.0/(1.0+FastMath.sqrt(distM)/scale)/degree[j];
-	            }
-	        }
-	    }
-	    	    
-        // update banded matrix
-        double[][] sqAinvBBt = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            sqAinvBBt[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                sqAinvBBt[n][m] += sqAinv[n][p]*BBt[p][m];
-            }
-        }
-        BBt = null;
-        
-        double[][] Afull = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Afull[n][m] = Acore[n][m];
-            for (int p=0;p<msize;p++) {
-                Afull[n][m] += sqAinvBBt[n][p]*sqAinv[p][m];
-            }
-        }
-        sqAinvBBt = null;
-        
-        // second eigendecomposition: S = A + A^-1/2 BB^T A^-1/2
-        mtx = new Array2DRowRealMatrix(Afull);
-        eig = new EigenDecomposition(mtx);
-        
-        // final result A^-1/2 V D^-1/2
-        double[][] Vortho = new double[msize][msize];
-        
-        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            Vortho[n][m] = 0.0;
-            for (int p=0;p<msize;p++) {
-                Vortho[n][m] += sqAinv[n][p]
-                                *eig.getV().getEntry(p,m)
-                                *1.0/FastMath.sqrt(eig.getRealEigenvalue(m));
-            }
-        }
-        double[] evals = new double[ndims];
-        for (int d=0;d<ndims;d++) evals[d] = eig.getRealEigenvalue(d);
-        mtx = null;
-        eig = null;
-        
-        // pass on to global result
-        embeddingList = new float[npt*ndims];
-        embeddingListRef = new float[nrf*ndims];
-        
-        for (int d=0;d<ndims;d++) {
-            System.out.println("eigenvalue "+(d+1)+": "+evals[d]);
-            for (int n=0;n<npt;n++) {
-                double embed=0.0;
-                for (int m=0;m<msize*step;m+=step) {
-                    double dist;
-                    if (m<npt) {
-                        dist = Numerics.square(pointList[3*n+X]-pointList[3*m+X])
-                              +Numerics.square(pointList[3*n+Y]-pointList[3*m+Y])
-                              +Numerics.square(pointList[3*n+Z]-pointList[3*m+Z]);
-                    } else {
-                        dist = Numerics.square(pointList[3*n+X]-pointListRef[3*(m-npt)+X])
-                              +Numerics.square(pointList[3*n+Y]-pointListRef[3*(m-npt)+Y])
-                              +Numerics.square(pointList[3*n+Z]-pointListRef[3*(m-npt)+Z]);
-                    } 
-                    embed += 1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n]*Vortho[m/step][d];
-                }
-                embeddingList[n+d*npt] = (float)embed;
-            }
-            for (int n=0;n<nrf;n++) {
-                double embed=0.0;
-                for (int m=0;m<msize*step;m+=step) {
-                    double dist;
-                    if (m<npt) {
-                        dist = Numerics.square(pointListRef[3*n+X]-pointList[3*m+X])
-                              +Numerics.square(pointListRef[3*n+Y]-pointList[3*m+Y])
-                              +Numerics.square(pointListRef[3*n+Z]-pointList[3*m+Z]);
-                    } else {
-                        dist = Numerics.square(pointListRef[3*n+X]-pointListRef[3*(m-npt)+X])
-                              +Numerics.square(pointListRef[3*n+Y]-pointListRef[3*(m-npt)+Y])
-                              +Numerics.square(pointListRef[3*n+Z]-pointListRef[3*(m-npt)+Z]);
-                    }
-                    embed += 1.0/(1.0+FastMath.sqrt(dist)/scale)/degree[n+npt]*Vortho[m/step][d];
-                }
-                embeddingListRef[n+d*nrf] = (float)embed;
-            }
-        }
-        
-		return;
-	}
-
 	public void meshDistanceEmbedding() {
 	    
 	    // data size
@@ -1106,6 +392,12 @@ public class SpectralMeshEmbedding {
 	    //return 1.0/(1.0+dist*dist/(scale*scale));
 	}
 
+	private final double linking(double dist) {
+	    //return scale/dist;
+	    return link/(1.0+dist/scale);
+	    //return 1.0/(1.0+dist*dist/(scale*scale));
+	}
+
 	public final void meshDistanceSparseEmbedding(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
 	    //boolean eigenGame = true;
 	    //boolean fullDistance = false;
@@ -1114,7 +406,7 @@ public class SpectralMeshEmbedding {
 	    int npt=pointList.length/3;
             
 	    // add a dimension for lowest eigenvector
-	    ndims = ndims+1;
+	    //ndims = ndims+1;
 	    
         // if volume is too big, subsample
         int step = Numerics.floor(npt/msize);
@@ -1256,7 +548,6 @@ public class SpectralMeshEmbedding {
 
         System.out.println("..correlations");
         
-        
         // build Laplacian
         int vol=msize;
         if (alpha>0) {
@@ -1296,15 +587,15 @@ public class SpectralMeshEmbedding {
         EigenDecomposition eig = new EigenDecomposition(mtx);
             
         //System.out.println("first four eigen values:");
-        double[] eigval = new double[ndims];
-        for (int s=0;s<ndims;s++) {
+        double[] eigval = new double[ndims+1];
+        for (int s=0;s<ndims+1;s++) {
             eigval[s] = eig.getRealEigenvalues()[s];
             //System.out.print(eigval[s]+", ");
         }
         // tiled results: we should interpolate instead...
         // from mean coord to neighbors
-        double[][] init = new double[ndims][npt];
-        for (int dim=0;dim<ndims;dim++) {
+        double[][] init = new double[ndims+1][npt];
+        for (int dim=0;dim<ndims+1;dim++) {
             System.out.println("eigenvalue "+dim+": "+eigval[dim]);
             for (int n=0;n<npt;n++) {
                 double sum=0.0;
@@ -1364,14 +655,14 @@ public class SpectralMeshEmbedding {
             System.out.println("..correlations");
                 
             // get initial vector guesses from subsampled data
-            double[] norm = new double[ndims];
-            for (int dim=0;dim<ndims;dim++) {
+            double[] norm = new double[ndims+1];
+            for (int dim=0;dim<ndims+1;dim++) {
                 for (int n=0;n<npt;n++) {
                     norm[dim] += init[dim][n]*init[dim][n];
                 }
             }
             // rescale to ||V||=1
-            for (int i=0;i<ndims;i++) {
+            for (int i=0;i<ndims+1;i++) {
                 norm[i] = FastMath.sqrt(norm[i]);
                 for (int vi=0;vi<npt;vi++) {
                     init[i][vi] /= norm[i];
@@ -1382,8 +673,8 @@ public class SpectralMeshEmbedding {
                               
         } 
         
-        embeddingList = new float[npt*(ndims-1)];
-        for (int dim=1;dim<ndims;dim++) {
+        embeddingList = new float[npt*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
             for (int n=0;n<npt;n++) {
                 embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
             }
@@ -1391,6 +682,744 @@ public class SpectralMeshEmbedding {
         
 		return;
 	}
+	
+	public final void meshDistanceSparseEmbedding2(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
+	    //boolean eigenGame = true;
+	    //boolean fullDistance = false;
+	    //double alpha = 0.0;
+	    
+	    int npt=pointList.length/3;
+        int step = Numerics.floor(npt/msize);
+	    System.out.println("step size: "+step);
+            
+	    // add a dimension for lowest eigenvector
+	    //ndims = ndims+1;
+	    
+	    int[] samples = new int[npt];
+	    for (int n=0;n<msize*step;n+=step) {
+	        samples[n] = n/step+1;
+	    }
+	    float[][] distances = new float[depth][npt];
+        int[][] closest = new int[depth][npt];
+        
+        // build the needed distance functions
+        MeshProcessing.computeOutsideDistanceFunctions(depth, distances, closest, pointList, triangleList, samples);
+        
+        float maxdist = 0.0f;
+        for (int d=0;d<depth;d++) for (int n=0;n<npt;n++) {
+            if (distances[d][n]>maxdist) maxdist = distances[d][n];
+        }
+	    System.out.println("fast marching distances max: "+maxdist);
+
+	    // affinities
+        //double[][] matrix = affinityMatrixFromMeshSampling(distances, closest, depth, step, msize, fullDistance);
+        double[][] matrix = distanceMatrixFromMeshSampling(distances, closest, depth, step, msize, fullDistance);
+        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+            if (matrix[n][m]>0) matrix[n][m] = affinity(matrix[n][m]);
+        }
+        
+        // build Laplacian
+        buildLaplacian(matrix, msize, alpha);
+            
+        // SVD? no, eigendecomposition (squared matrix)
+        RealMatrix mtx = null;
+        mtx = new Array2DRowRealMatrix(matrix);
+        EigenDecomposition eig = new EigenDecomposition(mtx);
+            
+        //System.out.println("first four eigen values:");
+        double[] eigval = new double[ndims+1];
+        for (int s=0;s<ndims+1;s++) {
+            eigval[s] = eig.getRealEigenvalues()[s];
+            //System.out.print(eigval[s]+", ");
+        }
+        // tiled results: we should interpolate instead...
+        // from mean coord to neighbors
+        double[][] init = new double[ndims+1][npt];
+        for (int dim=0;dim<ndims+1;dim++) {
+            System.out.println("eigenvalue "+dim+": "+eigval[dim]);
+            for (int n=0;n<npt;n++) {
+                double sum=0.0;
+                double den=0.0;
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    sum += affinity(distances[d][n])*eig.getV().getEntry(closest[d][n]-1,dim);
+                    den += affinity(distances[d][n]);
+                }
+                if (den>0) {
+                    init[dim][n] = (float)(sum/den);
+                }
+            }
+        }
+        // refine the result with eigenGame?
+        if (eigenGame && step>1) {
+            System.out.println("Eigen game base volume: "+npt);
+                
+            // build correlation matrix
+            int nmtx = 0;
+            
+            for (int n=0;n<npt;n++) {
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    nmtx++;
+                }
+            }
+            System.out.println("non-zero components: "+nmtx);
+                
+            double[] mtxval = new double[nmtx];
+            int[] mtxid1 = new int[nmtx];
+            int[] mtxid2 = new int[nmtx];
+            int[][] mtxinv = new int[depth][npt];
+            
+            int id=0;
+            for (int n=0;n<npt;n++) {
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    int ngb = closest[d][n]-1;
+                        
+                    double coeff = affinity(distances[d][n]);
+                    mtxval[id] = coeff;
+                    mtxid1[id] = n;
+                    mtxid2[id] = ngb; 
+                    mtxinv[d][n] = id+1;
+                    mtxinv[d][ngb] = id+1;
+                    id++;
+                }
+            }
+            System.out.println("..correlations");
+                
+            // get initial vector guesses from subsampled data
+            double[] norm = new double[ndims+1];
+            for (int dim=0;dim<ndims+1;dim++) {
+                for (int n=0;n<npt;n++) {
+                    norm[dim] += init[dim][n]*init[dim][n];
+                }
+            }
+            // rescale to ||V||=1
+            for (int i=0;i<ndims+1;i++) {
+                norm[i] = FastMath.sqrt(norm[i]);
+                for (int vi=0;vi<npt;vi++) {
+                    init[i][vi] /= norm[i];
+                }
+            }
+                
+            runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, npt, ndims, init, depth, alpha);
+                              
+        } 
+        
+        embeddingList = new float[npt*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            for (int n=0;n<npt;n++) {
+                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
+            }
+        }
+        
+		return;
+	}
+	
+	public final void meshDistanceJointSparseEmbedding(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
+	    //boolean eigenGame = true;
+	    //boolean fullDistance = false;
+	    //double alpha = 0.0;
+	    
+	    int npt=pointList.length/3;
+        int step = Numerics.floor(npt/msize);
+        
+	    int nrf=pointListRef.length/3;
+        int stpf = Numerics.floor(nrf/msize);
+	    System.out.println("step sizes: "+step+", "+stpf);
+            
+	    // add a dimension for lowest eigenvector
+	    //ndims = ndims+1;
+	    
+	    int[] samples = new int[npt];
+	    for (int n=0;n<msize*step;n+=step) {
+	        samples[n] = n/step+1;
+	    }
+	    float[][] distances = new float[depth][npt];
+        int[][] closest = new int[depth][npt];
+        
+        // build the needed distance functions
+        MeshProcessing.computeOutsideDistanceFunctions(depth, distances, closest, pointList, triangleList, samples);
+        
+	    int[] samplesRef = new int[nrf];
+	    for (int n=0;n<msize*stpf;n+=stpf) {
+	        samplesRef[n] = n/stpf+1;
+	    }
+	    float[][] distancesRef = new float[depth][nrf];
+        int[][] closestRef = new int[depth][nrf];
+        
+        // build the needed distance functions
+        MeshProcessing.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, pointListRef, triangleListRef, samplesRef);
+        
+        float maxdist = 0.0f;
+        for (int d=0;d<depth;d++) for (int n=0;n<npt;n++) {
+            if (distances[d][n]>maxdist) maxdist = distances[d][n];
+        }
+	    float maxdistRef = 0.0f;
+        for (int d=0;d<depth;d++) for (int n=0;n<nrf;n++) {
+            if (distancesRef[d][n]>maxdistRef) maxdistRef = distancesRef[d][n];
+        }
+	    System.out.println("fast marching distances max: "+maxdist+", "+maxdistRef);
+
+	    // affinities
+        double[][] matrix = distanceMatrixFromMeshSampling(distances, closest, depth, step, msize, fullDistance);
+        double[][] matrixRef = distanceMatrixFromMeshSampling(distancesRef, closestRef, depth, stpf, msize, fullDistance);
+        
+        // linking functions
+        double[][] linker = new double[msize][msize];
+        for (int n=0;n<msize;n++) for (int m=n;m<msize;m++) {
+            // linking distance: average of geodesic and point distances
+            double distN = FastMath.sqrt(Numerics.square(pointList[3*n+X]-pointListRef[3*n+X])
+                                        +Numerics.square(pointList[3*n+Y]-pointListRef[3*n+Y])
+                                        +Numerics.square(pointList[3*n+Z]-pointListRef[3*n+Z]));
+
+            double distM = FastMath.sqrt(Numerics.square(pointList[3*m+X]-pointListRef[3*m+X])
+                                        +Numerics.square(pointList[3*m+Y]-pointListRef[3*m+Y])
+                                        +Numerics.square(pointList[3*m+Z]-pointListRef[3*m+Z]));
+
+            //linker[n][m] = 0.5*(matrix[n][m]+matrixRef[n][m]+distN+distM);
+            linker[n][m] = 0.5*(matrix[n][m]+matrixRef[n][m]);
+            linker[m][n] = linker[n][m];
+        }
+        
+        double[][] joint = new double[2*msize][2*msize];
+        for (int n=0;n<msize;n++) for (int m=n;m<msize;m++) {
+            joint[n][m] = affinity(matrix[n][m]);
+            joint[n+msize][m] = linking(linker[n][m]);
+            joint[n][m+msize] = joint[n+msize][m];
+            joint[n+msize][m+msize] = affinity(matrixRef[n][m]);
+        }
+        
+        // build Laplacian
+        buildLaplacian(joint, 2*msize, alpha);
+            
+        // SVD? no, eigendecomposition (squared matrix)
+        RealMatrix mtx = null;
+        mtx = new Array2DRowRealMatrix(joint);
+        EigenDecomposition eig = new EigenDecomposition(mtx);
+            
+        //System.out.println("first four eigen values:");
+        double[] eigval = new double[ndims+1];
+        int[] eignum = new int[ndims+1];
+        eigval[0] = 1e16;
+        for (int n=0;n<2*msize;n++) {
+            if (eig.getRealEigenvalues()[n]<eigval[0]) {
+                eigval[0] = eig.getRealEigenvalues()[n];
+                eignum[0] = n;
+            }
+        }
+        for (int s=1;s<ndims+1;s++) {
+            eigval[s] = 1e16;
+            for (int n=0;n<2*msize;n++) {
+                if (eig.getRealEigenvalues()[n]<eigval[s] && eig.getRealEigenvalues()[n]>eigval[s-1]) {
+                    eigval[s] = eig.getRealEigenvalues()[n];
+                    eignum[s] = n;
+                }
+            }
+        }
+        // from mean coord to neighbors
+        double[][] init = new double[ndims+1][npt+nrf];
+        for (int dim=0;dim<ndims+1;dim++) {
+            System.out.println("eigenvalue "+dim+": "+eigval[dim]);
+            for (int n=0;n<npt;n++) {
+                double sum=0.0;
+                double den=0.0;
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    sum += affinity(distances[d][n])*eig.getV().getEntry(closest[d][n]-1,eignum[dim]);
+                    den += affinity(distances[d][n]);
+                }
+                if (den>0) {
+                    init[dim][n] = (float)(sum/den);
+                }
+            }
+            for (int n=0;n<nrf;n++) {
+                double sum=0.0;
+                double den=0.0;
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,eignum[dim]);
+                    den += affinity(distancesRef[d][n]);
+                }
+                if (den>0) {
+                    init[dim][npt+n] = (float)(sum/den);
+                }
+            }
+        }
+        
+        // refine the result with eigenGame?
+        if (eigenGame && step>1) {
+            System.out.println("Eigen game base volume: "+npt+nrf);
+                
+            // build correlation matrix
+            int nmtx = 0;
+            
+            for (int n=0;n<npt;n++) {
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    nmtx++;
+                }
+            }
+            for (int n=0;n<nrf;n++) {
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    nmtx++;
+                }
+            }
+            System.out.println("non-zero components: "+nmtx);
+                
+            double[] mtxval = new double[nmtx];
+            int[] mtxid1 = new int[nmtx];
+            int[] mtxid2 = new int[nmtx];
+            int[][] mtxinv = new int[depth][npt+nrf];
+            
+            int id=0;
+            for (int n=0;n<npt;n++) {
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    int ngb = closest[d][n]-1;
+                        
+                    double coeff = affinity(distances[d][n]);
+                    mtxval[id] = coeff;
+                    mtxid1[id] = n;
+                    mtxid2[id] = ngb; 
+                    mtxinv[d][n] = id+1;
+                    mtxinv[d][ngb] = id+1;
+                    id++;
+                }
+            }
+            for (int n=0;n<nrf;n++) {
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    int ngb = closestRef[d][n]-1;
+                        
+                    double coeff = affinity(distancesRef[d][n]);
+                    mtxval[id] = coeff;
+                    mtxid1[id] = npt+n;
+                    mtxid2[id] = npt+ngb; 
+                    mtxinv[d][npt+n] = id+1;
+                    mtxinv[d][npt+ngb] = id+1;
+                    id++;
+                }
+            }
+            System.out.println("..correlations");
+                
+            // get initial vector guesses from subsampled data
+            double[] norm = new double[ndims+1];
+            for (int dim=0;dim<ndims+1;dim++) {
+                for (int n=0;n<npt;n++) {
+                    norm[dim] += init[dim][n]*init[dim][n];
+                }
+            }
+            // rescale to ||V||=1
+            for (int i=0;i<ndims+1;i++) {
+                norm[i] = FastMath.sqrt(norm[i]);
+                for (int vi=0;vi<npt;vi++) {
+                    init[i][vi] /= norm[i];
+                }
+            }
+                
+            runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, npt, ndims, init, depth, alpha);
+                              
+        } 
+        
+        embeddingList = new float[npt*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            for (int n=0;n<npt;n++) {
+                //embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
+                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
+            }
+        }
+        
+        embeddingListRef = new float[nrf*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            for (int n=0;n<nrf;n++) {
+                //embeddingListRef[n+(dim-1)*nrf] = (float)(init[dim][npt+n]/init[0][npt+n]);
+                embeddingListRef[n+(dim-1)*nrf] = (float)(init[dim][npt+n]);
+            }
+        }
+        
+		return;
+	}
+	
+	public final void meshDistanceReferenceSparseEmbedding(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
+	    //boolean eigenGame = true;
+	    //boolean fullDistance = false;
+	    //double alpha = 0.0;
+	    
+	    int nrf=pointListRef.length/3;
+        int stpf = Numerics.floor(nrf/msize);
+	    System.out.println("step size: "+stpf);
+            
+	    // add a dimension for lowest eigenvector
+	    //ndims = ndims+1;
+	    
+	    int[] samplesRef = new int[nrf];
+	    for (int n=0;n<msize*stpf;n+=stpf) {
+	        samplesRef[n] = n/stpf+1;
+	    }
+	    float[][] distancesRef = new float[depth][nrf];
+        int[][] closestRef = new int[depth][nrf];
+        
+        // build the needed distance functions
+        MeshProcessing.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, pointListRef, triangleListRef, samplesRef);
+        
+	    float maxdistRef = 0.0f;
+        for (int d=0;d<depth;d++) for (int n=0;n<nrf;n++) {
+            if (distancesRef[d][n]>maxdistRef) maxdistRef = distancesRef[d][n];
+        }
+	    System.out.println("fast marching distances max: "+maxdistRef);
+
+	    // affinities
+        double[][] matrixRef = distanceMatrixFromMeshSampling(distancesRef, closestRef, depth, stpf, msize, fullDistance);
+        
+        // linking function is affinity
+        double[][] joint = new double[2*msize][2*msize];
+        for (int n=0;n<msize;n++) for (int m=n;m<msize;m++) {
+            joint[n][m] = affinity(matrixRef[n][m]);
+            joint[n+msize][m] = linking(matrixRef[n][m]);
+            joint[n][m+msize] = joint[n+msize][m];
+            joint[n+msize][m+msize] = joint[n][m];
+        }
+        
+        // build Laplacian
+        buildLaplacian(joint, 2*msize, alpha);
+            
+        // SVD? no, eigendecomposition (squared matrix)
+        RealMatrix mtx = null;
+        mtx = new Array2DRowRealMatrix(joint);
+        EigenDecomposition eig = new EigenDecomposition(mtx);
+            
+        //System.out.println("first four eigen values:");
+        double[] eigval = new double[ndims+1];
+        for (int s=0;s<ndims+1;s++) {
+            eigval[s] = eig.getRealEigenvalues()[s];
+            //System.out.print(eigval[s]+", ");
+        }
+        // from mean coord to neighbors
+        double[][] initRef = new double[ndims+1][nrf];
+        for (int dim=0;dim<ndims+1;dim++) {
+            System.out.println("eigenvalue "+dim+": "+eigval[dim]);
+            for (int n=0;n<nrf;n++) {
+                double sum=0.0;
+                double den=0.0;
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,dim);
+                    den += affinity(distancesRef[d][n]);
+                }
+                if (den>0) {
+                    initRef[dim][n] = (float)(sum/den);
+                }
+            }
+        }
+        
+        // refine the result with eigenGame?
+        if (eigenGame && stpf>1) {
+            System.out.println("Eigen game base volume: "+nrf);
+                
+            // build correlation matrix
+            int nmtx = 0;
+            
+            for (int n=0;n<nrf;n++) {
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    nmtx++;
+                }
+            }
+            System.out.println("non-zero components: "+nmtx);
+                
+            double[] mtxval = new double[nmtx];
+            int[] mtxid1 = new int[nmtx];
+            int[] mtxid2 = new int[nmtx];
+            int[][] mtxinv = new int[depth][nrf];
+            
+            int id=0;
+            for (int n=0;n<nrf;n++) {
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    int ngb = closestRef[d][n]-1;
+                        
+                    double coeff = affinity(distancesRef[d][n]);
+                    mtxval[id] = coeff;
+                    mtxid1[id] = n;
+                    mtxid2[id] = ngb; 
+                    mtxinv[d][n] = id+1;
+                    mtxinv[d][ngb] = id+1;
+                    id++;
+                }
+            }
+            System.out.println("..correlations");
+                
+            // get initial vector guesses from subsampled data
+            double[] norm = new double[ndims+1];
+            for (int dim=0;dim<ndims+1;dim++) {
+                for (int n=0;n<nrf;n++) {
+                    norm[dim] += initRef[dim][n]*initRef[dim][n];
+                }
+            }
+            // rescale to ||V||=1
+            for (int i=0;i<ndims+1;i++) {
+                norm[i] = FastMath.sqrt(norm[i]);
+                for (int vi=0;vi<nrf;vi++) {
+                    initRef[i][vi] /= norm[i];
+                }
+            }
+                
+            runSparseLaplacianEigenGame(mtxval, mtxid1, mtxid2, mtxinv, nmtx, nrf, ndims, initRef, depth, alpha);
+                              
+        } 
+        
+        embeddingListRef = new float[nrf*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            for (int n=0;n<nrf;n++) {
+                embeddingListRef[n+(dim-1)*nrf] = (float)(initRef[dim][n]/initRef[0][n]);
+            }
+        }
+        
+		return;
+	}
+	
+	private final double[][] affinityMatrixFromMeshSampling(float[][] distances, int[][] closest, int depth, int step, int msize, boolean fullDistance) {
+	    
+        // precompute surface-based distances
+	    double[][] matrix = new double[msize][msize];
+	    
+	    if (fullDistance) {
+            // build a complete sample distance map? should be doable, roughly O(msize^2)
+            // very slow for large meshes, though, and maybe not needed anyway given the eigengame step
+            float[][] sampledist = new float[msize][msize];
+            for (int n=0;n<msize*step;n+=step) {
+                for (int d=0;d<depth;d++) {
+                    int m = (closest[d][n]-1)*step;
+                    if (m>=0) {
+                        sampledist[n/step][m/step] = distances[d][n];
+                        sampledist[m/step][n/step] = distances[d][n];
+                    }
+                }
+            }
+            float dmax=0.0f, dmean=0.0f;
+            int nmean=0;
+            for (int n=0;n<msize*step;n+=step) for (int m=0;m<msize*step;m+=step) {
+                if (sampledist[n/step][m/step]>dmax) dmax = sampledist[n/step][m/step];
+                if (sampledist[n/step][m/step]>0) {
+                    dmean += sampledist[n/step][m/step];
+                    nmean++;
+                }
+            }
+            dmean /= nmean;
+            System.out.println("(mean: "+dmean+", max:"+dmax+")");
+    
+            // set to false to skip the propagation
+            int missing=1;
+            int prev = -1;
+            int nmiss=0;
+            while (missing>0 && missing!=prev) {
+                prev = missing;
+                missing=0;
+                for (int n=0;n<msize*step;n+=step) for (int m=0;m<msize*step;m+=step) {
+                    if (sampledist[n/step][m/step]>0) {
+                        for (int d=0;d<depth;d++) {
+                            int jm = (closest[d][n]-1)*step;
+                            if (jm>=0) {
+                                if (sampledist[jm/step][m/step]==0) sampledist[jm/step][m/step] = distances[d][n]+sampledist[n/step][m/step];
+                                else sampledist[jm/step][m/step] = Numerics.min(sampledist[jm/step][m/step],distances[d][n]+sampledist[n/step][m/step]);
+                                sampledist[m/step][jm/step] = sampledist[jm/step][m/step];
+                            }
+                            int jn = (closest[d][m]-1)*step;
+                            if (jn>=0) {
+                                if (sampledist[jn/step][n/step]==0) sampledist[jn/step][n/step] = distances[d][m]+sampledist[n/step][m/step];
+                                else sampledist[jn/step][n/step] = Numerics.min(sampledist[jn/step][n/step],distances[d][m]+sampledist[n/step][m/step]);
+                                sampledist[n/step][jn/step] = sampledist[jn/step][n/step];
+                            }
+                        }
+                    } else {
+                        missing++;
+                    }
+                }
+                nmiss++;
+            }
+            System.out.println("approximate distance propagation: "+nmiss);
+            dmax=0.0f; 
+            dmean=0.0f;
+            for (int n=0;n<msize*step;n+=step) for (int m=0;m<msize*step;m+=step) {
+                if (sampledist[n/step][m/step]>dmax) dmax = sampledist[n/step][m/step];
+                dmean += sampledist[n/step][m/step];
+            }
+            dmean /= msize*msize;
+            System.out.println("(mean: "+dmean+", max:"+dmax+")");
+            
+            // reset diagonal to zero to have correct distance when closest
+            for (int n=0;n<msize*step;n+=step) {
+                sampledist[n/step][n/step] = 0.0f;
+            }
+            
+            if (scale<0) scale = dmean;
+            
+            for (int n=0;n<msize*step;n+=step) {
+                for (int m=n+step;m<msize*step;m+=step) {
+                    double dist = sampledist[n/step][m/step];
+                    
+                    if (dist>0) {
+                        matrix[n/step][m/step] = affinity(dist);
+                        matrix[m/step][n/step] = affinity(dist);
+                    }
+                }
+            }
+        } else {
+            float dmax=0.0f, dmean=0.0f;
+            int nmean=0;
+            for (int n=0;n<msize*step;n+=step) {
+                for (int d=0;d<depth;d++) {
+                    int m = (closest[d][n]-1)*step;
+                    if (m>=0) {
+                        matrix[n/step][m/step] = affinity(distances[d][n]);
+                        matrix[m/step][n/step] = matrix[n/step][m/step];
+                        
+                        if (distances[d][n]>dmax) dmax = distances[d][n];
+                        if (distances[d][n]>0) {
+                            dmean += distances[d][n];
+                            nmean++;
+                        }
+                    }
+                }
+            }
+            dmean /= nmean;
+            System.out.println("ngb distances (mean: "+dmean+", max:"+dmax+")");
+        }
+        return matrix;
+    }
+    
+	private final double[][] distanceMatrixFromMeshSampling(float[][] distances, int[][] closest, int depth, int step, int msize, boolean fullDistance) {
+	    
+        // precompute surface-based distances
+	    double[][] matrix = new double[msize][msize];
+	    
+	    if (fullDistance) {
+            // build a complete sample distance map? should be doable, roughly O(msize^2)
+            // very slow for large meshes, though, and maybe not needed anyway given the eigengame step
+            float[][] sampledist = new float[msize][msize];
+            for (int n=0;n<msize*step;n+=step) {
+                for (int d=0;d<depth;d++) {
+                    int m = (closest[d][n]-1)*step;
+                    if (m>=0) {
+                        sampledist[n/step][m/step] = distances[d][n];
+                        sampledist[m/step][n/step] = distances[d][n];
+                    }
+                }
+            }
+            float dmax=0.0f, dmean=0.0f;
+            int nmean=0;
+            for (int n=0;n<msize*step;n+=step) for (int m=0;m<msize*step;m+=step) {
+                if (sampledist[n/step][m/step]>dmax) dmax = sampledist[n/step][m/step];
+                if (sampledist[n/step][m/step]>0) {
+                    dmean += sampledist[n/step][m/step];
+                    nmean++;
+                }
+            }
+            dmean /= nmean;
+            System.out.println("(mean: "+dmean+", max:"+dmax+")");
+    
+            // set to false to skip the propagation
+            int missing=1;
+            int prev = -1;
+            int nmiss=0;
+            while (missing>0 && missing!=prev) {
+                prev = missing;
+                missing=0;
+                for (int n=0;n<msize*step;n+=step) for (int m=0;m<msize*step;m+=step) {
+                    if (sampledist[n/step][m/step]>0) {
+                        for (int d=0;d<depth;d++) {
+                            int jm = (closest[d][n]-1)*step;
+                            if (jm>=0) {
+                                if (sampledist[jm/step][m/step]==0) sampledist[jm/step][m/step] = distances[d][n]+sampledist[n/step][m/step];
+                                else sampledist[jm/step][m/step] = Numerics.min(sampledist[jm/step][m/step],distances[d][n]+sampledist[n/step][m/step]);
+                                sampledist[m/step][jm/step] = sampledist[jm/step][m/step];
+                            }
+                            int jn = (closest[d][m]-1)*step;
+                            if (jn>=0) {
+                                if (sampledist[jn/step][n/step]==0) sampledist[jn/step][n/step] = distances[d][m]+sampledist[n/step][m/step];
+                                else sampledist[jn/step][n/step] = Numerics.min(sampledist[jn/step][n/step],distances[d][m]+sampledist[n/step][m/step]);
+                                sampledist[n/step][jn/step] = sampledist[jn/step][n/step];
+                            }
+                        }
+                    } else {
+                        missing++;
+                    }
+                }
+                nmiss++;
+            }
+            System.out.println("approximate distance propagation: "+nmiss);
+            dmax=0.0f; 
+            dmean=0.0f;
+            for (int n=0;n<msize*step;n+=step) for (int m=0;m<msize*step;m+=step) {
+                if (sampledist[n/step][m/step]>dmax) dmax = sampledist[n/step][m/step];
+                dmean += sampledist[n/step][m/step];
+            }
+            dmean /= msize*msize;
+            System.out.println("(mean: "+dmean+", max:"+dmax+")");
+            
+            // reset diagonal to zero to have correct distance when closest
+            for (int n=0;n<msize*step;n+=step) {
+                sampledist[n/step][n/step] = 0.0f;
+            }
+            
+            if (scale<0) scale = dmean;
+            
+            for (int n=0;n<msize*step;n+=step) {
+                for (int m=n+step;m<msize*step;m+=step) {
+                    double dist = sampledist[n/step][m/step];
+                    
+                    if (dist>0) {
+                        matrix[n/step][m/step] = dist;
+                        matrix[m/step][n/step] = dist;
+                    }
+                }
+            }
+        } else {
+            float dmax=0.0f, dmean=0.0f;
+            int nmean=0;
+            for (int n=0;n<msize*step;n+=step) {
+                for (int d=0;d<depth;d++) {
+                    int m = (closest[d][n]-1)*step;
+                    if (m>=0) {
+                        matrix[n/step][m/step] = distances[d][n];
+                        matrix[m/step][n/step] = matrix[n/step][m/step];
+                        
+                        if (distances[d][n]>dmax) dmax = distances[d][n];
+                        if (distances[d][n]>0) {
+                            dmean += distances[d][n];
+                            nmean++;
+                        }
+                    }
+                }
+            }
+            dmean /= nmean;
+            System.out.println("ngb distances (mean: "+dmean+", max:"+dmax+")");
+        }
+        return matrix;
+    }
+    
+    private final void buildLaplacian(double[][] matrix, int vol, double alpha) {
+        if (alpha>0) {
+            double[] norm = new double[vol];
+            for (int v1=0;v1<vol;v1++) {
+                norm[v1] = 0.0;
+                for (int v2=0;v2<vol;v2++) {
+                    norm[v1] += matrix[v1][v2];
+                }
+                norm[v1] = FastMath.pow(norm[v1],-alpha);
+            }
+            for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+                matrix[v1][v2] *= norm[v1]*norm[v2];
+                matrix[v2][v1] *= norm[v2]*norm[v1];
+            }
+        }
+            
+        double[] degree = new double[vol];
+        for (int v1=0;v1<vol;v1++) {
+            degree[v1] = 0.0;
+            for (int v2=0;v2<vol;v2++) {
+                degree[v1] += matrix[v1][v2];
+            }
+        }
+        for (int v1=0;v1<vol;v1++) {
+            matrix[v1][v1] = 1.0;
+        }
+        for (int v1=0;v1<vol;v1++) for (int v2=v1+1;v2<vol;v2++) {
+            matrix[v1][v2] = -matrix[v1][v2]/degree[v1];
+            matrix[v2][v1] = -matrix[v2][v1]/degree[v2];
+        }
+        System.out.println("..Laplacian");   
+    }
 
 	private final void runSparseLaplacianEigenGame(double[] mtval, int[] mtid1, int[] mtid2, int[][] mtinv, int nn0, int nm, int nv, double[][] init, int nconnect, double alpha) {
         //double step = 1e-2;     // step size
@@ -1588,5 +1617,127 @@ public class SpectralMeshEmbedding {
         }
     }
 
+    private final void embeddingReferenceRotation(double[][] ref0, double[][] ref1, double[][] sub1) {
+        
+        int ndims = sub1.length;
+        int npt = sub1[0].length;
+        int nrf = ref1[0].length;
+        
+        // build a rotation matrix for reference 1 to 0
+        double[] norm0 = new double[ndims];
+	    double[] norm1 = new double[ndims];
+	    for (int n=0;n<ndims;n++) {
+	        norm0[n] = 0.0;
+	        norm1[n] = 0.0;
+	        for (int i=0;i<nrf;i++) {
+	            norm0[n] += ref0[n][i]*ref0[n][i];
+	            norm1[n] += ref1[n][i]*ref1[n][i];
+	        }
+	        norm0[n] = FastMath.sqrt(norm0[n]);
+	        norm1[n] = FastMath.sqrt(norm1[n]);
+	    }
+	    double[][] rot = new double[ndims][ndims];
+	    for (int m=0;m<ndims;m++) for (int n=0;n<ndims;n++) {
+	        rot[m][n] = 0.0;
+	        for (int i=0;i<nrf;i++) {
+	            rot[m][n] += ref1[m][i]/norm1[m]*ref0[n][i]/norm0[n];
+	        }
+	    }
+	    System.out.println("rotation matrix");
+	    for (int m=0;m<ndims;m++) {
+	        System.out.print("[ ");
+	        for (int n=0;n<ndims;n++) {
+	            System.out.print(rot[m][n]+" ");
+	        }
+	        System.out.println("]");
+	    }
+	    double[][] rotated = new double[ndims][npt];
+        for (int n=0;n<ndims;n++) {
+            double norm=0.0;
+            for (int j=0;j<npt;j++) {
+	            double val = 0.0;
+	            for (int m=0;m<ndims;m++) {
+	                val += sub1[m][j]*rot[m][n];
+	            }
+	            rotated[n][j] = val;
+	            norm += val*val;
+	        }
+	        norm = FastMath.sqrt(norm);
+            for (int j=0;j<npt;j++) {
+	            rotated[n][j] /= norm;
+	        }
+	    }
+	    sub1 = rotated;
+    }
+
+    private final void embeddingReferenceRotation(float[] ref0, float[] ref1, float[] sub1, int nrf, int npt, int ndims) {
+        
+        // build a rotation matrix for reference 1 to 0
+        double[] norm0 = new double[ndims];
+	    double[] norm1 = new double[ndims];
+	    for (int n=0;n<ndims;n++) {
+	        norm0[n] = 0.0;
+	        norm1[n] = 0.0;
+	        for (int i=0;i<nrf;i++) {
+	            norm0[n] += ref0[i+n*nrf]*ref0[i+n*nrf];
+	            norm1[n] += ref1[i+n*nrf]*ref1[i+n*nrf];
+	        }
+	        norm0[n] = FastMath.sqrt(norm0[n]);
+	        norm1[n] = FastMath.sqrt(norm1[n]);
+	    }
+	    double[][] rot = new double[ndims][ndims];
+	    for (int m=0;m<ndims;m++) for (int n=0;n<ndims;n++) {
+	        rot[m][n] = 0.0;
+	        for (int i=0;i<nrf;i++) {
+	            rot[m][n] += ref1[i+m*nrf]/norm1[m]*ref0[i+n*nrf]/ref0[n];
+	        }
+	    }
+	    System.out.println("rotation matrix");
+	    for (int m=0;m<ndims;m++) {
+	        System.out.print("[ ");
+	        for (int n=0;n<ndims;n++) {
+	            System.out.print(rot[m][n]+" ");
+	        }
+	        System.out.println("]");
+	    }
+	    float[] rotated = new float[ndims*npt];
+        for (int n=0;n<ndims;n++) {
+            double norm=0.0;
+            for (int j=0;j<npt;j++) {
+	            double val = 0.0;
+	            for (int m=0;m<ndims;m++) {
+	                val += sub1[j+m*npt]*rot[m][n];
+	            }
+	            rotated[j+n*npt] = (float)val;
+	            norm += val*val;
+	        }
+	        norm = FastMath.sqrt(norm);
+            for (int j=0;j<npt;j++) {
+	            rotated[j+n*npt] /= (float)norm;
+	        }
+	    }
+	    sub1 = rotated;
+    }
+    
+    public void rotatedJointSpatialEmbedding(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
+
+	    // make reference embedding
+	    System.out.println("-- building reference embedding --");
+	    meshDistanceReferenceSparseEmbedding(depth, eigenGame, fullDistance, alpha);
+	    float[] refEmbedding = new float[embeddingListRef.length];
+	    for (int n=0;n<embeddingListRef.length;n++) {
+	        refEmbedding[n] = embeddingListRef[n];
+	    }
+	    
+	    // make joint embedding
+	    System.out.println("-- building joint embedding --");
+	    meshDistanceJointSparseEmbedding(depth, eigenGame, fullDistance, alpha);
+	    	    
+	    // make rotation back into reference space
+	    System.out.println("-- rotating joint embedding --");
+	    int npt=pointList.length/3;
+        int nrf=pointListRef.length/3;
+        embeddingReferenceRotation(refEmbedding, embeddingListRef, embeddingList, nrf, npt, ndims);
+	}
 
 }
