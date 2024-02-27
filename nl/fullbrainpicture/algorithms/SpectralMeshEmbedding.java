@@ -30,6 +30,7 @@ public class SpectralMeshEmbedding {
 	private int ndims = 10;
 	private int msize = 800;
 	private float scale = 1.0f;
+	private double space = 1.0f;
 	private float link = 1.0f;
 	
 	// numerical quantities
@@ -59,6 +60,7 @@ public class SpectralMeshEmbedding {
 	public final void setDimensions(int val) { ndims = val; }
 	public final void setMatrixSize(int val) { msize = val; }
 	public final void setDistanceScale(float val) { scale = val; }
+	public final void setSpatialScale(double val) { space = val; }
 	public final void setLinkingFactor(float val) { link = val; }
 					
 	// create outputs
@@ -394,7 +396,7 @@ public class SpectralMeshEmbedding {
 
 	private final double linking(double dist) {
 	    //return scale/dist;
-	    return link/(1.0+dist/scale);
+	    return link/(1.0+dist/space);
 	    //return 1.0/(1.0+dist*dist/(scale*scale));
 	}
 
@@ -676,7 +678,8 @@ public class SpectralMeshEmbedding {
         embeddingList = new float[npt*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             for (int n=0;n<npt;n++) {
-                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
+                //embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
+                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
             }
         }
         
@@ -806,7 +809,8 @@ public class SpectralMeshEmbedding {
         embeddingList = new float[npt*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             for (int n=0;n<npt;n++) {
-                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
+                //embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
+                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
             }
         }
         
@@ -859,8 +863,8 @@ public class SpectralMeshEmbedding {
 	    System.out.println("fast marching distances max: "+maxdist+", "+maxdistRef);
 
 	    // affinities
-        double[][] matrix = distanceMatrixFromMeshSampling(distances, closest, depth, step, msize, fullDistance);
-        double[][] matrixRef = distanceMatrixFromMeshSampling(distancesRef, closestRef, depth, stpf, msize, fullDistance);
+        double[][] distmtx = distanceMatrixFromMeshSampling(distances, closest, depth, step, msize, fullDistance);
+        double[][] distmtxRef = distanceMatrixFromMeshSampling(distancesRef, closestRef, depth, stpf, msize, fullDistance);
         
         // linking functions
         double[][] linker = new double[msize][msize];
@@ -875,24 +879,24 @@ public class SpectralMeshEmbedding {
                                         +Numerics.square(pointList[3*m+Z]-pointListRef[3*m+Z]));
 
             //linker[n][m] = 0.5*(matrix[n][m]+matrixRef[n][m]+distN+distM);
-            linker[n][m] = 0.5*(matrix[n][m]+matrixRef[n][m]);
+            linker[n][m] = 0.5*(distmtx[n][m]+distmtxRef[n][m]);
             linker[m][n] = linker[n][m];
         }
         
-        double[][] joint = new double[2*msize][2*msize];
-        for (int n=0;n<msize;n++) for (int m=n;m<msize;m++) {
-            joint[n][m] = affinity(matrix[n][m]);
-            joint[n+msize][m] = linking(linker[n][m]);
-            joint[n][m+msize] = joint[n+msize][m];
-            joint[n+msize][m+msize] = affinity(matrixRef[n][m]);
+        double[][] matrix = new double[2*msize][2*msize];
+        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+            matrix[n][m] = affinity(distmtx[n][m]);
+            matrix[n][m+msize] = linking(linker[n][m]);
+            matrix[m+msize][n] = linking(linker[m][n]);
+            matrix[n+msize][m+msize] = affinity(distmtxRef[n][m]);
         }
         
         // build Laplacian
-        buildLaplacian(joint, 2*msize, alpha);
+        buildLaplacian(matrix, 2*msize, alpha);
             
         // SVD? no, eigendecomposition (squared matrix)
         RealMatrix mtx = null;
-        mtx = new Array2DRowRealMatrix(joint);
+        mtx = new Array2DRowRealMatrix(matrix);
         EigenDecomposition eig = new EigenDecomposition(mtx);
             
         //System.out.println("first four eigen values:");
@@ -918,6 +922,7 @@ public class SpectralMeshEmbedding {
         double[][] init = new double[ndims+1][npt+nrf];
         for (int dim=0;dim<ndims+1;dim++) {
             System.out.println("eigenvalue "+dim+": "+eigval[dim]);
+            System.out.println("eigenorder "+dim+": "+eignum[dim]);
             for (int n=0;n<npt;n++) {
                 double sum=0.0;
                 double den=0.0;
@@ -1161,7 +1166,16 @@ public class SpectralMeshEmbedding {
         embeddingListRef = new float[nrf*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
             for (int n=0;n<nrf;n++) {
-                embeddingListRef[n+(dim-1)*nrf] = (float)(initRef[dim][n]/initRef[0][n]);
+                //embeddingListRef[n+(dim-1)*nrf] = (float)(initRef[dim][n]/initRef[0][n]);
+                embeddingListRef[n+(dim-1)*nrf] = (float)(initRef[dim][n]);
+            }
+        }
+        // copy to the other value for ouput
+        embeddingList = new float[nrf*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            for (int n=0;n<nrf;n++) {
+                //embeddingList[n+(dim-1)*nrf] = (float)(initRef[dim][n]/initRef[0][n]);
+                embeddingList[n+(dim-1)*nrf] = (float)(initRef[dim][n]);
             }
         }
         
