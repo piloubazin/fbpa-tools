@@ -32,6 +32,7 @@ public class SpectralMeshEmbedding {
 	private float scale = 1.0f;
 	private double space = 1.0f;
 	private float link = 1.0f;
+	private boolean normalize=true;
 	
 	// numerical quantities
 	private static final	double	INVSQRT2 = 1.0/FastMath.sqrt(2.0);
@@ -677,9 +678,15 @@ public class SpectralMeshEmbedding {
         
         embeddingList = new float[npt*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
             for (int n=0;n<npt;n++) {
                 //embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
                 embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
+                norm += embeddingList[n+(dim-1)*npt]*embeddingList[n+(dim-1)*npt];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<npt;n++) {
+                embeddingList[n+(dim-1)*npt] /= norm;
             }
         }
         
@@ -808,12 +815,34 @@ public class SpectralMeshEmbedding {
         
         embeddingList = new float[npt*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
             for (int n=0;n<npt;n++) {
                 //embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
                 embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
+                norm += embeddingList[n+(dim-1)*npt]*embeddingList[n+(dim-1)*npt];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<npt;n++) {
+                embeddingList[n+(dim-1)*npt] /= norm;
             }
         }
-        
+
+        // check the result
+        System.out.println("orthogonality");
+        double mean = 0.0;
+        double min = 1e9;
+        double max = -1e9;
+        double num = 0.0;
+        for (int v1=0;v1<ndims-1;v1++) for (int v2=v1+1;v2<ndims;v2++) {
+            double prod=0.0;
+            for (int m=0;m<npt;m++) prod += embeddingList[m+v1*npt]*embeddingList[m+v2*npt];
+            mean += prod;
+            num++;
+            if (prod>max) max = prod;
+            if (prod<min) min = prod;
+        }
+        System.out.println("["+min+" | "+mean/num+" | "+max+"]");
+
 		return;
 	}
 	
@@ -901,6 +930,11 @@ public class SpectralMeshEmbedding {
             
         //System.out.println("first four eigen values:");
         double[] eigval = new double[ndims+1];
+        for (int s=0;s<ndims+1;s++) {
+            eigval[s] = eig.getRealEigenvalues()[s];
+            //System.out.print(eigval[s]+", ");
+        }
+        /*
         int[] eignum = new int[ndims+1];
         eigval[0] = 1e16;
         for (int n=0;n<2*msize;n++) {
@@ -917,17 +951,18 @@ public class SpectralMeshEmbedding {
                     eignum[s] = n;
                 }
             }
-        }
+        }*/
         // from mean coord to neighbors
         double[][] init = new double[ndims+1][npt+nrf];
         for (int dim=0;dim<ndims+1;dim++) {
             System.out.println("eigenvalue "+dim+": "+eigval[dim]);
-            System.out.println("eigenorder "+dim+": "+eignum[dim]);
+            //System.out.println("eigenorder "+dim+": "+eignum[dim]);
             for (int n=0;n<npt;n++) {
                 double sum=0.0;
                 double den=0.0;
                 for (int d=0;d<depth;d++) if (closest[d][n]>0) {
-                    sum += affinity(distances[d][n])*eig.getV().getEntry(closest[d][n]-1,eignum[dim]);
+                    //sum += affinity(distances[d][n])*eig.getV().getEntry(closest[d][n]-1,eignum[dim]);
+                    sum += affinity(distances[d][n])*eig.getV().getEntry(closest[d][n]-1,dim);
                     den += affinity(distances[d][n]);
                 }
                 if (den>0) {
@@ -938,7 +973,8 @@ public class SpectralMeshEmbedding {
                 double sum=0.0;
                 double den=0.0;
                 for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
-                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,eignum[dim]);
+                    //sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,eignum[dim]);
+                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,dim);
                     den += affinity(distancesRef[d][n]);
                 }
                 if (den>0) {
@@ -1021,17 +1057,45 @@ public class SpectralMeshEmbedding {
         
         embeddingList = new float[npt*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
             for (int n=0;n<npt;n++) {
                 //embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]/init[0][n]);
                 embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
+                norm += embeddingList[n+(dim-1)*npt]*embeddingList[n+(dim-1)*npt];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<npt;n++) {
+                embeddingList[n+(dim-1)*npt] /= norm;
             }
         }
         
+        // check the result
+        System.out.println("orthogonality");
+        double mean = 0.0;
+        double min = 1e9;
+        double max = -1e9;
+        double num = 0.0;
+        for (int v1=0;v1<ndims-1;v1++) for (int v2=v1+1;v2<ndims;v2++) {
+            double prod=0.0;
+            for (int m=0;m<npt;m++) prod += embeddingList[m+v1*npt]*embeddingList[m+v2*npt];
+            mean += prod;
+            num++;
+            if (prod>max) max = prod;
+            if (prod<min) min = prod;
+        }
+        System.out.println("["+min+" | "+mean/num+" | "+max+"]");
+
         embeddingListRef = new float[nrf*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
             for (int n=0;n<nrf;n++) {
                 //embeddingListRef[n+(dim-1)*nrf] = (float)(init[dim][npt+n]/init[0][npt+n]);
                 embeddingListRef[n+(dim-1)*nrf] = (float)(init[dim][npt+n]);
+                norm += embeddingListRef[n+(dim-1)*nrf]*embeddingListRef[n+(dim-1)*nrf];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<nrf;n++) {
+                embeddingListRef[n+(dim-1)*nrf] /= norm;
             }
         }
         
@@ -1068,22 +1132,16 @@ public class SpectralMeshEmbedding {
 
 	    // affinities
         double[][] matrixRef = distanceMatrixFromMeshSampling(distancesRef, closestRef, depth, stpf, msize, fullDistance);
-        
-        // linking function is affinity
-        double[][] joint = new double[2*msize][2*msize];
-        for (int n=0;n<msize;n++) for (int m=n;m<msize;m++) {
-            joint[n][m] = affinity(matrixRef[n][m]);
-            joint[n+msize][m] = linking(matrixRef[n][m]);
-            joint[n][m+msize] = joint[n+msize][m];
-            joint[n+msize][m+msize] = joint[n][m];
+        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+            if (matrixRef[n][m]>0) matrixRef[n][m] = affinity(matrixRef[n][m]);
         }
         
         // build Laplacian
-        buildLaplacian(joint, 2*msize, alpha);
+        buildLaplacian(matrixRef, msize, alpha);
             
         // SVD? no, eigendecomposition (squared matrix)
         RealMatrix mtx = null;
-        mtx = new Array2DRowRealMatrix(joint);
+        mtx = new Array2DRowRealMatrix(matrixRef);
         EigenDecomposition eig = new EigenDecomposition(mtx);
             
         //System.out.println("first four eigen values:");
@@ -1100,7 +1158,7 @@ public class SpectralMeshEmbedding {
                 double sum=0.0;
                 double den=0.0;
                 for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
-                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,dim);
+                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(closestRef[d][n]-1,dim);
                     den += affinity(distancesRef[d][n]);
                 }
                 if (den>0) {
@@ -1165,20 +1223,39 @@ public class SpectralMeshEmbedding {
         
         embeddingListRef = new float[nrf*ndims];
         for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
             for (int n=0;n<nrf;n++) {
                 //embeddingListRef[n+(dim-1)*nrf] = (float)(initRef[dim][n]/initRef[0][n]);
                 embeddingListRef[n+(dim-1)*nrf] = (float)(initRef[dim][n]);
+                norm += embeddingListRef[n+(dim-1)*nrf]*embeddingListRef[n+(dim-1)*nrf];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<nrf;n++) {
+                embeddingListRef[n+(dim-1)*nrf] /= norm;
             }
         }
         // copy to the other value for ouput
         embeddingList = new float[nrf*ndims];
-        for (int dim=1;dim<ndims+1;dim++) {
-            for (int n=0;n<nrf;n++) {
-                //embeddingList[n+(dim-1)*nrf] = (float)(initRef[dim][n]/initRef[0][n]);
-                embeddingList[n+(dim-1)*nrf] = (float)(initRef[dim][n]);
-            }
+        for (int n=0;n<nrf*ndims;n++) {
+            embeddingList[n] = embeddingListRef[n];
         }
         
+        // check the result
+        System.out.println("orthogonality");
+        double mean = 0.0;
+        double min = 1e9;
+        double max = -1e9;
+        double num = 0.0;
+        for (int v1=0;v1<ndims-1;v1++) for (int v2=v1+1;v2<ndims;v2++) {
+            double prod=0.0;
+            for (int m=0;m<nrf;m++) prod += embeddingList[m+v1*nrf]*embeddingList[m+v2*nrf];
+            mean += prod;
+            num++;
+            if (prod>max) max = prod;
+            if (prod<min) min = prod;
+        }
+        System.out.println("["+min+" | "+mean/num+" | "+max+"]");
+
 		return;
 	}
 	
@@ -1703,7 +1780,7 @@ public class SpectralMeshEmbedding {
 	    for (int m=0;m<ndims;m++) for (int n=0;n<ndims;n++) {
 	        rot[m][n] = 0.0;
 	        for (int i=0;i<nrf;i++) {
-	            rot[m][n] += ref1[i+m*nrf]/norm1[m]*ref0[i+n*nrf]/ref0[n];
+	            rot[m][n] += ref1[i+m*nrf]/norm1[m]*ref0[i+n*nrf]/norm0[n];
 	        }
 	    }
 	    System.out.println("rotation matrix");
@@ -1730,7 +1807,29 @@ public class SpectralMeshEmbedding {
 	            rotated[j+n*npt] /= (float)norm;
 	        }
 	    }
-	    sub1 = rotated;
+	    for (int n=0;n<npt*ndims;n++) {
+	        sub1[n] = rotated[n];
+	    }
+	    rotated = new float[ndims*nrf];
+        for (int n=0;n<ndims;n++) {
+            double norm=0.0;
+            for (int i=0;i<nrf;i++) {
+	            double val = 0.0;
+	            for (int m=0;m<ndims;m++) {
+	                val += ref1[i+m*nrf]*rot[m][n];
+	            }
+	            rotated[i+n*nrf] = (float)val;
+	            norm += val*val;
+	        }
+	        norm = FastMath.sqrt(norm);
+            for (int i=0;i<nrf;i++) {
+	            rotated[i+n*nrf] /= (float)norm;
+	        }
+	    }
+	    for (int n=0;n<nrf*ndims;n++) {
+	        ref1[n] = rotated[n];
+	    }
+	    return;
     }
     
     public void rotatedJointSpatialEmbedding(int depth, boolean eigenGame, boolean fullDistance, double alpha) {
