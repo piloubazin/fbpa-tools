@@ -271,11 +271,16 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                        +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                        +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                      +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                      +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
-                            
-                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                   +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                   +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                            } else {
+                                d0 = Numerics.min(d1,d2);
+                            }
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0);    
                         } else if  (labels[p1]!=labels[p]) {
                             // distance P1 to P, P2
                             double d1 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p+X])*(pts[3*p1+X]-pts[3*p+X])
@@ -287,11 +292,16 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p+X]-pts[3*p2+X])*(pts[3*p+X]-pts[3*p2+X])
                                                        +(pts[3*p+Y]-pts[3*p2+Y])*(pts[3*p+Y]-pts[3*p2+Y])
                                                        +(pts[3*p+Z]-pts[3*p2+Z])*(pts[3*p+Z]-pts[3*p2+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p1+X]-pts[3*p+X])*(1.0f-(pts[3*p2+X]-pts[3*p+X])/d12) )
-                                                      +Numerics.square( (pts[3*p1+Y]-pts[3*p+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p+Y])/d12) )
-                                                      +Numerics.square( (pts[3*p1+Z]-pts[3*p+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p+Z])/d12) ) );
-                            
-                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*p1+X]-pts[3*p+X])*(1.0f-(pts[3*p2+X]-pts[3*p+X])/d12) )
+                                                   +Numerics.square( (pts[3*p1+Y]-pts[3*p+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p+Y])/d12) )
+                                                   +Numerics.square( (pts[3*p1+Z]-pts[3*p+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p+Z])/d12) ) );
+                            } else {
+                                d0 = Numerics.min(d1,d2);
+                            }
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0);    
                         } else if  (labels[p2]!=labels[p]) {
                             // distance P2 to P, P1
                             double d1 = FastMath.sqrt( (pts[3*p2+X]-pts[3*p+X])*(pts[3*p2+X]-pts[3*p+X])
@@ -303,11 +313,16 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p+X]-pts[3*p1+X])*(pts[3*p+X]-pts[3*p1+X])
                                                        +(pts[3*p+Y]-pts[3*p1+Y])*(pts[3*p+Y]-pts[3*p1+Y])
                                                        +(pts[3*p+Z]-pts[3*p1+Z])*(pts[3*p+Z]-pts[3*p1+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p2+X]-pts[3*p+X])*(1.0f-(pts[3*p1+X]-pts[3*p+X])/d12) )
-                                                      +Numerics.square( (pts[3*p2+Y]-pts[3*p+Y])*(1.0f-(pts[3*p1+Y]-pts[3*p+Y])/d12) )
-                                                      +Numerics.square( (pts[3*p2+Z]-pts[3*p+Z])*(1.0f-(pts[3*p1+Z]-pts[3*p+Z])/d12) ) );
-                            
-                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*p2+X]-pts[3*p+X])*(1.0f-(pts[3*p1+X]-pts[3*p+X])/d12) )
+                                                   +Numerics.square( (pts[3*p2+Y]-pts[3*p+Y])*(1.0f-(pts[3*p1+Y]-pts[3*p+Y])/d12) )
+                                                   +Numerics.square( (pts[3*p2+Z]-pts[3*p+Z])*(1.0f-(pts[3*p1+Z]-pts[3*p+Z])/d12) ) );
+                            } else {
+                                d0 = Numerics.min(d1,d2);
+                            }
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0);    
                         }
                     }
                 }
@@ -370,12 +385,18 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                        +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                        +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                      +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                      +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
-                        
-                            mindist = Numerics.min(mindist, 0.5f*(distance[p1]+distance[p2])+(float)d0,
-                                                   distance[p1]+(float)d1, distance[p2]+(float)d2);
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                   +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                   +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                                // still compare to distances to the endpoints, which may be smaller if original distances are off
+                                mindist = Numerics.min(mindist, 0.5f*(distance[p1]+distance[p2])+(float)d0, 
+                                                        distance[p1]+(float)d1, distance[p2]+(float)d2);
+                            } else {
+                                mindist = Numerics.min(mindist, distance[p1]+(float)d1, distance[p2]+(float)d2);
+                            }
                         } else if (processed[p1]) {
                             double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
                                                       +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
@@ -467,11 +488,18 @@ public class MeshProcessing {
                     double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                    double d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                              +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                              +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                    double d0 = 0.0;
+                    // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                    if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                        d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                           +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                           +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
                     
-                    float dist = Numerics.min(0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);
+                    } else {
+                        d0 = Numerics.min(d1,d2);
+                    }
+                    //float dist = Numerics.min(0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);
+                    float dist = 0.5f*(float)d0;
                     
                     if (labels[p1]>0 && labels[p]>-1) heap.addValue(dist, p, labels[p1]);
                     if (labels[p]>0 && labels[p1]>-1) heap.addValue(dist, p1, labels[p]);
@@ -551,12 +579,18 @@ public class MeshProcessing {
                                 double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                            +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                            +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                                double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                          +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                          +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                                double d0 = 0.0;
+                                // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                                if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                    d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                       +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                       +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
                             
-                                mindist = Numerics.min(mindist, 0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
+                                    mindist = Numerics.min(mindist, 0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
                                                        distances[found1][p1]+(float)d1, distances[found2][p2]+(float)d2);
+                                } else {
+                                    mindist = Numerics.min(mindist, distances[found1][p1]+(float)d1, distances[found2][p2]+(float)d2);
+                                }
                             } else if (found1>-1) {
                                 double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
                                                           +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
@@ -655,11 +689,16 @@ public class MeshProcessing {
                     double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                    double d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                              +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                              +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
-                    
-                    float dist = Numerics.min(0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);
+                    double d0 = 0.0;
+                    // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                    if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                        d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                           +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                           +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                    } else {
+                        d0 = Numerics.min(d1,d2);
+                    }
+                    float dist = 0.5f*(float)d0;
                     
                     // outside distances
                     if (labels[p1]>0 && labels[p]>-1) oheap.addValue(dist, p, labels[p1]);
@@ -741,12 +780,18 @@ public class MeshProcessing {
                                 double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                            +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                            +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                                double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                          +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                          +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                                double d0 = 0.0;
+                                // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                                if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                    d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                       +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                       +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
                             
-                                mindist = Numerics.min(mindist, -0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
+                                    mindist = Numerics.min(mindist, -0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
                                                        -distances[found1][p1]+(float)d1, -distances[found2][p2]+(float)d2);
+                                } else {
+                                    mindist = Numerics.min(mindist, distances[found1][p1]+(float)d1, distances[found2][p2]+(float)d2);
+                                }
                             } else if (found1>-1) {
                                 double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
                                                           +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
@@ -834,12 +879,18 @@ public class MeshProcessing {
                                 double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                            +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                            +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                                double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                          +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                          +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                                double d0 = 0.0;
+                                // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                                if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                    d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                       +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                       +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
                             
-                                mindist = Numerics.min(mindist, 0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
+                                    mindist = Numerics.min(mindist, 0.5f*(distances[found1][p1]+distances[found2][p2])+(float)d0,
                                                        distances[found1][p1]+(float)d1, distances[found2][p2]+(float)d2);
+                                } else {
+                                    mindist = Numerics.min(mindist, distances[found1][p1]+(float)d1, distances[found2][p2]+(float)d2);
+                                }
                             } else if (found1>-1) {
                                 double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
                                                           +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
@@ -910,11 +961,16 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                        +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                        +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                      +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                      +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
-                            
-                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*p+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                   +Numerics.square( (pts[3*p+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                   +Numerics.square( (pts[3*p+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                            } else {
+                                d0 = Numerics.min(d1,d2);
+                            }
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0);    
                         } else if  (weights[p1]<=0) {
                             // distance P1 to P, P2
                             double d1 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p+X])*(pts[3*p1+X]-pts[3*p+X])
@@ -926,11 +982,16 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p+X]-pts[3*p2+X])*(pts[3*p+X]-pts[3*p2+X])
                                                        +(pts[3*p+Y]-pts[3*p2+Y])*(pts[3*p+Y]-pts[3*p2+Y])
                                                        +(pts[3*p+Z]-pts[3*p2+Z])*(pts[3*p+Z]-pts[3*p2+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p1+X]-pts[3*p+X])*(1.0f-(pts[3*p2+X]-pts[3*p+X])/d12) )
-                                                      +Numerics.square( (pts[3*p1+Y]-pts[3*p+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p+Y])/d12) )
-                                                      +Numerics.square( (pts[3*p1+Z]-pts[3*p+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p+Z])/d12) ) );
-                            
-                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*p1+X]-pts[3*p+X])*(1.0f-(pts[3*p2+X]-pts[3*p+X])/d12) )
+                                                   +Numerics.square( (pts[3*p1+Y]-pts[3*p+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p+Y])/d12) )
+                                                   +Numerics.square( (pts[3*p1+Z]-pts[3*p+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p+Z])/d12) ) );
+                            } else {
+                                d0 = Numerics.min(d1,d2);
+                            }
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0);    
                         } else if  (weights[p2]<=0) {
                             // distance P2 to P, P1
                             double d1 = FastMath.sqrt( (pts[3*p2+X]-pts[3*p+X])*(pts[3*p2+X]-pts[3*p+X])
@@ -942,11 +1003,16 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p+X]-pts[3*p1+X])*(pts[3*p+X]-pts[3*p1+X])
                                                        +(pts[3*p+Y]-pts[3*p1+Y])*(pts[3*p+Y]-pts[3*p1+Y])
                                                        +(pts[3*p+Z]-pts[3*p1+Z])*(pts[3*p+Z]-pts[3*p1+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*p2+X]-pts[3*p+X])*(1.0f-(pts[3*p1+X]-pts[3*p+X])/d12) )
-                                                      +Numerics.square( (pts[3*p2+Y]-pts[3*p+Y])*(1.0f-(pts[3*p1+Y]-pts[3*p+Y])/d12) )
-                                                      +Numerics.square( (pts[3*p2+Z]-pts[3*p+Z])*(1.0f-(pts[3*p1+Z]-pts[3*p+Z])/d12) ) );
-                            
-                            mindist = Numerics.min(mindist, 0.5f*(float)d0,0.5f*(float)d1,0.5f*(float)d2);    
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*p2+X]-pts[3*p+X])*(1.0f-(pts[3*p1+X]-pts[3*p+X])/d12) )
+                                                   +Numerics.square( (pts[3*p2+Y]-pts[3*p+Y])*(1.0f-(pts[3*p1+Y]-pts[3*p+Y])/d12) )
+                                                   +Numerics.square( (pts[3*p2+Z]-pts[3*p+Z])*(1.0f-(pts[3*p1+Z]-pts[3*p+Z])/d12) ) );
+                            } else {
+                                d0 = Numerics.min(d1,d2);
+                            }
+                            mindist = Numerics.min(mindist, 0.5f*(float)d0);    
                         }
                     }
                 }
@@ -1008,12 +1074,18 @@ public class MeshProcessing {
                             double d12 = FastMath.sqrt( (pts[3*p1+X]-pts[3*p2+X])*(pts[3*p1+X]-pts[3*p2+X])
                                                        +(pts[3*p1+Y]-pts[3*p2+Y])*(pts[3*p1+Y]-pts[3*p2+Y])
                                                        +(pts[3*p1+Z]-pts[3*p2+Z])*(pts[3*p1+Z]-pts[3*p2+Z]) );
-                            double d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
-                                                      +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
-                                                      +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
+                            double d0 = 0.0;
+                            // check if within the line segment P1 P2, use min(d1,d2) otherwise
+                            if (Numerics.max(d1*d1,d2*d2)-d12*d12<=Numerics.min(d1*d1,d2*d2)) {
+                                d0 = FastMath.sqrt( Numerics.square( (pts[3*nk+X]-pts[3*p1+X])*(1.0f-(pts[3*p2+X]-pts[3*p1+X])/d12) )
+                                                   +Numerics.square( (pts[3*nk+Y]-pts[3*p1+Y])*(1.0f-(pts[3*p2+Y]-pts[3*p1+Y])/d12) )
+                                                   +Numerics.square( (pts[3*nk+Z]-pts[3*p1+Z])*(1.0f-(pts[3*p2+Z]-pts[3*p1+Z])/d12) ) );
                         
-                            mindist = Numerics.min(mindist, 0.5f*(distance[p1]+distance[p2])+(float)d0,
+                                mindist = Numerics.min(mindist, 0.5f*(distance[p1]+distance[p2])+(float)d0,
                                                    distance[p1]+(float)d1, distance[p2]+(float)d2);
+                            } else {
+                                mindist = Numerics.min(mindist, distance[p1]+(float)d1, distance[p2]+(float)d2);
+                            }
                         } else if (processed[p1]) {
                             double d1 = FastMath.sqrt( (pts[3*nk+X]-pts[3*p1+X])*(pts[3*nk+X]-pts[3*p1+X])
                                                       +(pts[3*nk+Y]-pts[3*p1+Y])*(pts[3*nk+Y]-pts[3*p1+Y])
