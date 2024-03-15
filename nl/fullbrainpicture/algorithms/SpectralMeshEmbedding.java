@@ -41,10 +41,16 @@ public class SpectralMeshEmbedding {
 	private static final	double	SQRT3 = FastMath.sqrt(3.0);
 
 	// direction labeling		
-	public	static	byte	X = 0;
-	public	static	byte	Y = 1;
-	public	static	byte	Z = 2;
-	public	static	byte	T = 3;
+	public	static	final    byte	X = 0;
+	public	static	final    byte	Y = 1;
+	public	static	final    byte	Z = 2;
+	public	static	final    byte	T = 3;
+	
+	// affinity types	
+	public	static	final    byte	CAUCHY = 10;
+	public	static	final    byte	GAUSS = 20;
+	public	static	final    byte	LINEAR = 30;
+	private byte affinity_type = LINEAR;
 	
 	// for debug and display
 	private static final boolean		debug=true;
@@ -63,6 +69,11 @@ public class SpectralMeshEmbedding {
 	public final void setDistanceScale(float val) { scale = val; }
 	public final void setSpatialScale(double val) { space = val; }
 	public final void setLinkingFactor(float val) { link = val; }
+	public final void setAffinityType(String val) { 
+	    if (val.equals("Cauchy")) affinity_type = CAUCHY;
+        else if (val.equals("Gauss")) affinity_type = GAUSS;
+        else affinity_type = LINEAR;
+	}
 					
 	// create outputs
 	public final float[] 	getEmbeddingValues() { return embeddingList; }
@@ -71,14 +82,16 @@ public class SpectralMeshEmbedding {
 
 	private final double affinity(double dist) {
 	    //return scale/dist;
-	    return 1.0/(1.0+dist/scale);
+	    if (affinity_type==CAUCHY) return 1.0/(1.0+dist*dist/scale/scale);
+	    else if (affinity_type==GAUSS) return FastMath.exp(-0.5*dist*dist/scale/scale);
+	    else return 1.0/(1.0+dist/scale);
 	    //return 1.0/(1.0+dist*dist/(scale*scale));
 	}
 
 	private final double linking(double dist) {
-	    //return scale/dist;
-	    return link/(1.0+dist/space);
-	    //return 1.0/(1.0+dist*dist/(scale*scale));
+	    if (affinity_type==CAUCHY) return link/(1.0+dist*dist/space/space);
+	    else if (affinity_type==GAUSS) return link*FastMath.exp(-0.5*dist*dist/space/space);
+	    else return link/(1.0+dist/space);
 	}
 	   
     public void rotatedJointSpatialEmbedding(int depth, double alpha) {

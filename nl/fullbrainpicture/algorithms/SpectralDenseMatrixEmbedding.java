@@ -34,7 +34,7 @@ public class SpectralDenseMatrixEmbedding {
 	private int msize = 800;
 	private double scale = 1.0f;
 	private double space = 1.0f;
-	private double link = 0.1f;
+	private double link = 1.0f;
 	private boolean normalize=true;
 	
 	// numerical quantities
@@ -48,6 +48,12 @@ public class SpectralDenseMatrixEmbedding {
 	public	static	byte	Y = 1;
 	public	static	byte	Z = 2;
 	public	static	byte	T = 3;
+
+	// affinity types	
+	public	static	final    byte	CAUCHY = 10;
+	public	static	final    byte	GAUSS = 20;
+	public	static	final    byte	LINEAR = 30;
+	private byte affinity_type = LINEAR;
 
 	// for debug and display
 	private static final boolean		debug=true;
@@ -69,11 +75,30 @@ public class SpectralDenseMatrixEmbedding {
 	public final void setSpatialScale(double val) { space = val; }
 	public final void setLinkingFactor(double val) { link = val; }
 	public final void setNormalize(boolean val) { normalize = val; }
-					
+	public final void setAffinityType(String val) { 
+	    if (val.equals("Cauchy")) affinity_type = CAUCHY;
+        else if (val.equals("Gauss")) affinity_type = GAUSS;
+        else affinity_type = LINEAR;
+	}
+										
 	// create outputs
 	public final double[] 	getSubjectEmbeddings() { return embeddingB; }
 	public final double[] 	getReferenceEmbeddings() { return embeddingA; }
 
+	private final double affinity(double dist) {
+	    //return scale/dist;
+	    if (affinity_type==CAUCHY) return 1.0/(1.0+dist*dist/scale/scale);
+	    else if (affinity_type==GAUSS) return FastMath.exp(-0.5*dist*dist/scale/scale);
+	    else return 1.0/(1.0+dist/scale);
+	    //return 1.0/(1.0+dist*dist/(scale*scale));
+	}
+
+	private final double linking(double dist) {
+	    if (affinity_type==CAUCHY) return link/(1.0+dist*dist/space/space);
+	    else if (affinity_type==GAUSS) return link*FastMath.exp(-0.5*dist*dist/space/space);
+	    else return link/(1.0+dist/space);
+	}
+	   
 	public void matrixRotatedSpatialEmbedding() {
 
 	    // data size
@@ -198,7 +223,8 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixA[n+m*npa];
 	                         
 	            //Azero[n/stepa][m/stepa] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[n/stepa][m/stepa] = 1.0/(1.0+dist/scale);
+                //Azero[n/stepa][m/stepa] = 1.0/(1.0+dist/scale);
+                Azero[n/stepa][m/stepa] = affinity(dist);
                 Azero[m/stepa][n/stepa] = Azero[n/stepa][m/stepa];
                 degree[n/stepa] += Azero[n/stepa][m/stepa];
                 degree[m/stepa] += Azero[m/stepa][n/stepa];
@@ -215,7 +241,8 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixB[n+m*npb];
 	                         
 	            //Azero[msize+n/stepb][msize+m/stepb] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[msize+n/stepb][msize+m/stepb] = 1.0/(1.0+dist/scale);
+                //Azero[msize+n/stepb][msize+m/stepb] = 1.0/(1.0+dist/scale);
+                Azero[msize+n/stepb][msize+m/stepb] = affinity(dist);
                 Azero[msize+m/stepb][msize+n/stepb] = Azero[msize+n/stepb][msize+m/stepb];
                 degree[msize+n/stepb] += Azero[msize+n/stepb][msize+m/stepb];
                 degree[msize+m/stepb] += Azero[msize+m/stepb][msize+n/stepb];
@@ -227,7 +254,8 @@ public class SpectralDenseMatrixEmbedding {
 	            if (matrixAB!=null) {
                     double dist = matrixAB[n+m*npa];
 	                         
-                    Azero[n/stepa][msize+m/stepb] = 1.0/(1.0+dist/scale);
+                    //Azero[n/stepa][msize+m/stepb] = 1.0/(1.0+dist/scale);
+                    Azero[n/stepa][msize+m/stepb] = linking(dist);
                     Azero[msize+m/stepb][n/stepa] = Azero[n/stepa][msize+m/stepb];
                 
                     degree[n/stepa] += Azero[n/stepa][msize+m/stepb];
@@ -298,7 +326,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*stepa;m+=stepa) {
                     double dist = matrixA[n+m*npa];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(m/stepa,2*msize-1-dim);
                     den += val;
@@ -331,7 +359,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*stepb;m+=stepb) {
                     double dist = matrixB[n+m*npb];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(msize+m/stepb,2*msize-1-dim);
                     den += val;
@@ -405,7 +433,7 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixA[n+m*npa];
 	                         
 	            //Azero[n/stepa][m/stepa] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[n/stepa][m/stepa] = 1.0/(1.0+dist/scale);
+                Azero[n/stepa][m/stepa] = affinity(dist);
                 Azero[m/stepa][n/stepa] = Azero[n/stepa][m/stepa];
                 degree[n/stepa] += Azero[n/stepa][m/stepa];
                 degree[m/stepa] += Azero[m/stepa][n/stepa];
@@ -422,7 +450,7 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixB[n+m*npb];
 	                         
 	            //Azero[msize+n/stepb][msize+m/stepb] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[msize+n/stepb][msize+m/stepb] = 1.0/(1.0+dist/scale);
+                Azero[msize+n/stepb][msize+m/stepb] = affinity(dist);
                 Azero[msize+m/stepb][msize+n/stepb] = Azero[msize+n/stepb][msize+m/stepb];
                 degree[msize+n/stepb] += Azero[msize+n/stepb][msize+m/stepb];
                 degree[msize+m/stepb] += Azero[msize+m/stepb][msize+n/stepb];
@@ -434,7 +462,7 @@ public class SpectralDenseMatrixEmbedding {
                 if (matrixAB!=null) {
                     double dist = matrixAB[n+m*npa];
                 
-                    Azero[n/stepa][msize+m/stepb] = link/(1.0+dist/space);
+                    Azero[n/stepa][msize+m/stepb] = linking(dist);
                     //Azero[n/stepa][msize+m/stepb] = link*FastMath.exp(-dist/(space*space));
                     Azero[msize+m/stepb][n/stepa] = Azero[n/stepa][msize+m/stepb];
             
@@ -445,7 +473,7 @@ public class SpectralDenseMatrixEmbedding {
                                  +Numerics.square(pointsA[3*n+Y]-pointsB[3*m+Y])
                                  +Numerics.square(pointsA[3*n+Z]-pointsB[3*m+Z]);
                 
-                    Azero[n/stepa][msize+m/stepb] = link/(1.0+FastMath.sqrt(dist)/space);
+                    Azero[n/stepa][msize+m/stepb] = linking(FastMath.sqrt(dist));
                     //Azero[n/stepa][msize+m/stepb] = link*FastMath.exp(-dist/(space*space));
                     Azero[msize+m/stepb][n/stepa] = Azero[n/stepa][msize+m/stepb];
             
@@ -504,7 +532,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*stepa;m+=stepa) {
                     double dist = matrixA[n+m*npa];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(m/stepa,2*msize-1-dim);
                     den += val;
@@ -513,7 +541,7 @@ public class SpectralDenseMatrixEmbedding {
                     if (matrixAB!=null) {
                         double dist = matrixAB[n+m*npa];
                                      
-                        double val = link/(1.0+dist/space);
+                        double val = linking(dist);
                         
                         sum += val*eig.getV().getEntry(msize+m/stepb,2*msize-1-dim);
                         den += val;
@@ -522,7 +550,7 @@ public class SpectralDenseMatrixEmbedding {
                                      +Numerics.square(pointsA[3*n+Y]-pointsB[3*m+Y])
                                      +Numerics.square(pointsA[3*n+Z]-pointsB[3*m+Z]);
                                      
-                        double val = link/(1.0+FastMath.sqrt(dist)/space);
+                        double val = linking(FastMath.sqrt(dist));
                         
                         sum += val*eig.getV().getEntry(msize+m/stepb,2*msize-1-dim);
                         den += val;
@@ -544,7 +572,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*stepb;m+=stepb) {
                     double dist = matrixB[n+m*npb];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(msize+m/stepb,2*msize-1-dim);
                     den += val;
@@ -553,7 +581,7 @@ public class SpectralDenseMatrixEmbedding {
                     if (matrixAB!=null) {
                         double dist = matrixAB[n+m*npa];
                                      
-                        double val = link/(1.0+dist/space);
+                        double val = linking(dist);
                         
                         sum += val*eig.getV().getEntry(m/stepa,2*msize-1-dim);
                         den += val;
@@ -562,7 +590,7 @@ public class SpectralDenseMatrixEmbedding {
                                      +Numerics.square(pointsB[3*n+Y]-pointsA[3*m+Y])
                                      +Numerics.square(pointsB[3*n+Z]-pointsA[3*m+Z]);
                                      
-                        double val = link/(1.0+FastMath.sqrt(dist)/space);
+                        double val = linking(FastMath.sqrt(dist));
                         
                         sum += val*eig.getV().getEntry(m/stepa,2*msize-1-dim);
                         den += val;
@@ -646,7 +674,7 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixA[n+m*npa];
 	                         
 	            //Azero[n/stepa][m/stepa] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[n/stepa][m/stepa] = 1.0/(1.0+dist/scale);
+                Azero[n/stepa][m/stepa] = affinity(dist);
                 Azero[m/stepa][n/stepa] = Azero[n/stepa][m/stepa];
                 degree[n/stepa] += Azero[n/stepa][m/stepa];
                 degree[m/stepa] += Azero[m/stepa][n/stepa];
@@ -663,7 +691,7 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixA[n+m*npa];
 	                         
 	            //Azero[msize+n/stepa][msize+m/stepa] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[msize+n/stepa][msize+m/stepa] = 1.0/(1.0+dist/scale);
+                Azero[msize+n/stepa][msize+m/stepa] = affinity(dist);
                 Azero[msize+m/stepa][msize+n/stepa] = Azero[msize+n/stepa][msize+m/stepa];
                 degree[msize+n/stepa] += Azero[msize+n/stepa][msize+m/stepa];
                 degree[msize+m/stepa] += Azero[msize+m/stepa][msize+n/stepa];
@@ -675,7 +703,7 @@ public class SpectralDenseMatrixEmbedding {
                 if (matrixAA!=null) {
                     double dist = matrixAA[n+m*npa];
                 
-                    Azero[n/stepa][msize+m/stepa] = link/(1.0+dist/space);
+                    Azero[n/stepa][msize+m/stepa] = linking(dist);
                     //Azero[n/stepa][msize+m/stepb] = link*FastMath.exp(-dist/(space*space));
                     Azero[msize+m/stepa][n/stepa] = Azero[n/stepa][msize+m/stepa];
             
@@ -686,7 +714,7 @@ public class SpectralDenseMatrixEmbedding {
                                  +Numerics.square(pointsA[3*n+Y]-pointsA[3*m+Y])
                                  +Numerics.square(pointsA[3*n+Z]-pointsA[3*m+Z]);
                 
-                    Azero[n/stepa][msize+m/stepa] = link/(1.0+FastMath.sqrt(dist)/space);
+                    Azero[n/stepa][msize+m/stepa] = linking(FastMath.sqrt(dist));
                     //Azero[n/stepa][msize+m/stepb] = link*FastMath.exp(-dist/(space*space));
                     Azero[msize+m/stepa][n/stepa] = Azero[n/stepa][msize+m/stepa];
             
@@ -745,7 +773,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*stepa;m+=stepa) {
                     double dist = matrixA[n+m*npa];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(m/stepa,2*msize-1-dim);
                     den += val;
@@ -754,7 +782,7 @@ public class SpectralDenseMatrixEmbedding {
                     if (matrixAA!=null) {
                         double dist = matrixAA[n+m*npa];
 
-                        double val = link/(1.0+dist/space);
+                        double val = linking(dist);
 	                
                         sum += val*eig.getV().getEntry(msize+m/stepa,2*msize-1-dim);
                         den += val;
@@ -763,7 +791,7 @@ public class SpectralDenseMatrixEmbedding {
                                      +Numerics.square(pointsA[3*n+Y]-pointsA[3*m+Y])
                                      +Numerics.square(pointsA[3*n+Z]-pointsA[3*m+Z]);
                                      
-                        double val = link/(1.0+FastMath.sqrt(dist)/space);
+                        double val = linking(FastMath.sqrt(dist));
                         
                         sum += val*eig.getV().getEntry(msize+m/stepa,2*msize-1-dim);
                         den += val;
@@ -851,7 +879,7 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixB[n+m*npb];
 	                         
 	            //Azero[n/step][m/step] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[n/step][m/step] = 1.0/(1.0+dist/scale);
+                Azero[n/step][m/step] = affinity(dist);
                 Azero[m/step][n/step] = Azero[n/step][m/step];
                 degree[n/step] += Azero[n/step][m/step];
                 degree[m/step] += Azero[m/step][n/step];
@@ -891,7 +919,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*step;m+=step) {
                     double dist = matrixB[n+m*npb];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(m/step,msize-1-dim);
                     den += val;
@@ -961,7 +989,7 @@ public class SpectralDenseMatrixEmbedding {
 	            double dist = matrixA[n+m*npa];
 	                         
 	            //Azero[n/step][m/step] = 1.0/(1.0+FastMath.sqrt(dist)/scale);
-                Azero[n/step][m/step] = 1.0/(1.0+dist/scale);
+                Azero[n/step][m/step] = affinity(dist);
                 Azero[m/step][n/step] = Azero[n/step][m/step];
                 degree[n/step] += Azero[n/step][m/step];
                 degree[m/step] += Azero[m/step][n/step];
@@ -1001,7 +1029,7 @@ public class SpectralDenseMatrixEmbedding {
                 for (int m=0;m<msize*step;m+=step) {
                     double dist = matrixA[n+m*npa];
 	                         
-	                double val = 1.0/(1.0+dist/scale);
+	                double val = affinity(dist);
 	                
 	                sum += val*eig.getV().getEntry(m/step,msize-1-dim);
                     den += val;
