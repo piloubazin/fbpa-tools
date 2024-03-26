@@ -735,6 +735,87 @@ public class ObjectTransforms {
        return levelset;
      }
 
+	public static final void computeOutsideDistanceFunctions(int nb, float[][] distances, int[][] closest, int[] labels, int nx, int ny, int nz)  {
+        BinaryHeapPair heap = new BinaryHeapPair(nx*ny+ny*nz+nz*nx, BinaryHeap2D.MINTREE);
+				        		
+		// compute the neighboring labels and corresponding distance functions (! not the MGDM functions !)
+        //if (debug) System.out.print("fast marching\n");		
+        heap.reset();
+		// initialize the heap from boundaries
+		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+        	int xyz = x+nx*y+nx*ny*z;
+        	if (labels[xyz]>0) {
+                // search for boundaries (exclude interface with negative regions, only expand labels above zero)
+                for (byte k = 0; k<6; k++) {
+                    int xyzn = fastMarchingNeighborIndex(k, xyz, nx, ny, nz);
+                    if (labels[xyzn]!=labels[xyz] && labels[xyzn]>-1) {
+                        // add to the heap
+                        heap.addValue(0.5f,xyzn,labels[xyz]);
+                    }
+                }
+            }
+        }
+		//if (debug) System.out.print("init\n");		
+
+        // grow the labels and functions
+        int[] processed = new int[nx*ny*nz]; // note: using a byte instead of boolean for the second pass
+		float[] nbdist = new float[6];
+		boolean[] nbflag = new boolean[6];
+		while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int xyz = heap.getFirstId1();
+        	int lb = heap.getFirstId2();
+			heap.removeFirst();
+
+			// if more than nmgdm labels have been found already, this is done
+			if (processed[xyz]>=nb)  continue;
+			
+			// check if the current label is already accounted for
+			boolean found=false;
+			for (int n=0;n<processed[xyz];n++) if (closest[n][xyz]==lb) found=true;
+			if (found) continue;
+			
+			// update the distance functions at the current level
+			distances[processed[xyz]][xyz] = dist;
+			closest[processed[xyz]][xyz] = lb;
+			processed[xyz]++; // update the current level
+ 			
+			// find new neighbors
+			for (byte k = 0; k<6; k++) {
+				int xyzn = fastMarchingNeighborIndex(k, xyz, nx, ny, nz);
+				
+				if (labels[xyzn]!=lb && labels[xyzn]>-1) {
+                    found=false;
+                    if (processed[xyzn]>=nb) { // no point in adding neighbors that are already set, faster
+                        found=true;
+                    } else {
+                        for (int n=0;n<processed[xyzn];n++) if (closest[n][xyzn]==lb) found=true;
+                    }
+                    if (!found) {// must be in outside the object or its processed neighborhood
+                        // compute new distance based on processed neighbors for the same object
+                        for (byte l=0; l<6; l++) {
+                            nbdist[l] = -1.0f;
+                            nbflag[l] = false;
+                            int xyznb = fastMarchingNeighborIndex(l, xyzn, nx, ny, nz);
+                            // note that there is at most one value used here
+                            for (int n=0;n<processed[xyznb];n++) if (closest[n][xyznb]==lb) {
+                                nbdist[l] = distances[n][xyznb];
+                                nbflag[l] = true;
+                                n = processed[xyznb];
+                            }			
+                        }
+                        float newdist = minimumMarchingDistance(nbdist, nbflag);
+                        
+                        // add to the heap
+                        heap.addValue(newdist,xyzn,lb);
+                    }
+				}
+			}			
+		}
+       return;
+     }
+
 	
 	public static final float[] fastMarchingDistanceFunction(float[] levelset, int nx, int ny, int nz)  {
         // computation variables
