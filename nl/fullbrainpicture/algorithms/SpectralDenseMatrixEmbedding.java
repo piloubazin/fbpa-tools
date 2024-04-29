@@ -53,6 +53,8 @@ public class SpectralDenseMatrixEmbedding {
 	public	static	final    byte	CAUCHY = 10;
 	public	static	final    byte	GAUSS = 20;
 	public	static	final    byte	LINEAR = 30;
+	public	static	final    byte	COSINE = 40;
+	public	static	final    byte	PRECOMPUTED = 50;
 	private byte affinity_type = LINEAR;
 
 	// for debug and display
@@ -78,6 +80,8 @@ public class SpectralDenseMatrixEmbedding {
 	public final void setAffinityType(String val) { 
 	    if (val.equals("Cauchy")) affinity_type = CAUCHY;
         else if (val.equals("Gauss")) affinity_type = GAUSS;
+        else if (val.equals("cosine")) affinity_type = COSINE;
+        else if (val.equals("precomputed")) affinity_type = PRECOMPUTED;
         else affinity_type = LINEAR;
 	}
 										
@@ -89,6 +93,8 @@ public class SpectralDenseMatrixEmbedding {
 	    //return scale/dist;
 	    if (affinity_type==CAUCHY) return 1.0/(1.0+dist*dist/scale/scale);
 	    else if (affinity_type==GAUSS) return FastMath.exp(-0.5*dist*dist/scale/scale);
+	    else if (affinity_type==COSINE) return Numerics.max(1.0 - dist/scale,0.0);
+	    else if (affinity_type==PRECOMPUTED) return dist/scale;
 	    else return 1.0/(1.0+dist/scale);
 	    //return 1.0/(1.0+dist*dist/(scale*scale));
 	}
@@ -96,6 +102,8 @@ public class SpectralDenseMatrixEmbedding {
 	private final double linking(double dist) {
 	    if (affinity_type==CAUCHY) return link/(1.0+dist*dist/space/space);
 	    else if (affinity_type==GAUSS) return link*FastMath.exp(-0.5*dist*dist/space/space);
+	    else if (affinity_type==COSINE) return link*Numerics.max(1.0 - dist/space,0.0);
+	    else if (affinity_type==PRECOMPUTED) return link*dist/space;
 	    else return link/(1.0+dist/space);
 	}
 	   
