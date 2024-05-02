@@ -21,6 +21,7 @@ public class SpectralVoxelEmbedding {
 	// jist containers
     private float[] inputImage;
     private float[] refImage;
+    private float[] ref2imgMapping;
     
     private float[] imgEmbedding;
     private float[] refEmbedding;
@@ -65,6 +66,7 @@ public class SpectralVoxelEmbedding {
 	// create inputs
 	public final void setInputImage(float[] val) { inputImage = val; }
 	public final void setReferenceImage(float[] val) { refImage = val; }
+	public final void setReferenceToImageMapping(float[] val) { ref2imgMapping = val; }
 	
 	public final void setDimensions(int val) { ndims = val; }
 	public final void setMatrixSize(int val) { msize = val; }
@@ -252,46 +254,17 @@ public class SpectralVoxelEmbedding {
 	}
 	
 	public final void voxelDistanceJointSparseEmbedding(int depth, double alpha) {
-	    int npt=0;
-	    for (int xyz=0;xyz<nxyz;xyz++) if (inputImage[xyz]>threshold) {
-	        npt++;
-	    }
-        int step = Numerics.floor(npt/msize);
-	    
 	    int nrf=0;
 	    for (int xyz=0;xyz<nxyzr;xyz++) if (refImage[xyz]>threshold) {
 	        nrf++;
 	    }
         int stpf = Numerics.floor(nrf/msize);
-	    System.out.println("step sizes: "+step+", "+stpf);
+	    System.out.println("step size: "+stpf);
             
-	    int[] samples = new int[nxyz];
-	    int[] pts = new int[msize];
-	    int p=0;
-	    int s=1;
-	    for (int xyz=0;xyz<nxyz;xyz++) {
-	        if (inputImage[xyz]>threshold) {
-                if (p>s*step && s<=msize) {
-                    samples[xyz] = s;
-                    pts[s-1] = xyz;
-                    s++;
-                }
-                p++;
-            } else {
-                // mask out regions outside the structure of interest
-                samples[xyz] = -1;
-            }
-	    }
-	    float[][] distances = new float[depth][nxyz];
-        int[][] closest = new int[depth][nxyz];
-        
-        // build the needed distance functions
-        ObjectTransforms.computeOutsideDistanceFunctions(depth, distances, closest, samples, nx, ny, nz);
-        
 	    int[] samplesRef = new int[nxyzr];
 	    int[] prf = new int[msize];
-	    p=0;
-	    s=1;
+	    int p=0;
+	    int s=1;
 	    for (int xyz=0;xyz<nxyzr;xyz++) {
 	        if (refImage[xyz]>threshold) {
                 if (p>s*stpf && s<=msize) {
@@ -310,6 +283,53 @@ public class SpectralVoxelEmbedding {
         
         // build the needed distance functions
         ObjectTransforms.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, samplesRef, nxr, nyr, nzr);
+        
+        // select subject points aligned with reference
+        int[] samples = new int[nxyz];
+	    int[] pts = new int[msize];
+	    
+	    for (int n=0;n<msize;n++) {
+	        int xs = Numerics.round(ref2imgMapping[prf[n]+X*nxyzr]);
+	        int ys = Numerics.round(ref2imgMapping[prf[n]+Y*nxyzr]);
+	        int zs = Numerics.round(ref2imgMapping[prf[n]+Z*nxyzr]);
+	        // search for closest neighbor
+	        if (inputImage[xs+nx*ys+nx*ny*zs]<=threshold) {
+                boolean found = false;
+                int delta=1;
+                while (!found) {
+                    for (int dx=-delta;dx<=delta;dx++) {
+                        for (int dy=-delta;dy<=delta;dy++) {
+                            for (int dz=-delta;dz<=delta;dz++) {
+                                if (dx==-delta || dx==delta || dy==-delta || dy==delta || dz==-delta || dz==delta) {
+                                    if (inputImage[xs+dx+nx*(ys+dy)+nx*ny*(zs+dz)]>threshold) {
+                                        found = true;
+                                        xs = xs+dx;
+                                        ys = ys+dy;
+                                        zs = zs+dz;
+                                        dx=delta+1;
+                                        dy=delta+1;
+                                        dz=delta+1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    delta++;
+                    if (delta>=10) {
+                        System.out.print("x");
+                        found=true;
+                    }
+                }
+            }
+            pts[n] = xs+nx*ys+nx*ny*zs;
+            samples[xs+nx*ys+nx*ny*zs] = n+1;
+        }
+        
+	    float[][] distances = new float[depth][nxyz];
+        int[][] closest = new int[depth][nxyz];
+        
+        // build the needed distance functions
+        ObjectTransforms.computeOutsideDistanceFunctions(depth, distances, closest, samples, nx, ny, nz);
         
         float maxdist = 0.0f;
         for (int d=0;d<depth;d++) for (int xyz=0;xyz<nxyz;xyz++) {
@@ -331,7 +351,7 @@ public class SpectralVoxelEmbedding {
             // linking distance: average of geodesic and point distances?
             // just the geodesics seems most stable.
             // note that it is implied that the sampled points are corresponding across both meshes
-            // (not always true!)
+            // (which is done via matching above)
             linker[n][m] = 0.5*(distmtx[n][m]+distmtxRef[n][m]);
             linker[m][n] = linker[n][m];
         }
