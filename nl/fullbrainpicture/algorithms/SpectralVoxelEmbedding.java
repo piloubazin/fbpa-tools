@@ -21,7 +21,7 @@ public class SpectralVoxelEmbedding {
 	// jist containers
     private float[] inputImage;
     private float[] refImage;
-    private float[] ref2imgMapping;
+    private float[] refMapping;
     
     private float[] imgEmbedding;
     private float[] refEmbedding;
@@ -66,7 +66,7 @@ public class SpectralVoxelEmbedding {
 	// create inputs
 	public final void setInputImage(float[] val) { inputImage = val; }
 	public final void setReferenceImage(float[] val) { refImage = val; }
-	public final void setReferenceToImageMapping(float[] val) { ref2imgMapping = val; }
+	public final void setMapping(float[] val) { refMapping = val; }
 	
 	public final void setDimensions(int val) { ndims = val; }
 	public final void setMatrixSize(int val) { msize = val; }
@@ -289,9 +289,9 @@ public class SpectralVoxelEmbedding {
 	    int[] pts = new int[msize];
 	    
 	    for (int n=0;n<msize;n++) {
-	        int xs = Numerics.round(ref2imgMapping[prf[n]+X*nxyzr]);
-	        int ys = Numerics.round(ref2imgMapping[prf[n]+Y*nxyzr]);
-	        int zs = Numerics.round(ref2imgMapping[prf[n]+Z*nxyzr]);
+	        int xs = Numerics.round(refMapping[prf[n]+X*nxyzr]);
+	        int ys = Numerics.round(refMapping[prf[n]+Y*nxyzr]);
+	        int zs = Numerics.round(refMapping[prf[n]+Z*nxyzr]);
 	        // search for closest neighbor
 	        if (inputImage[xs+nx*ys+nx*ny*zs]<=threshold) {
                 boolean found = false;
