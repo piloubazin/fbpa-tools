@@ -15,7 +15,7 @@ import java.util.*;
 /*
  * @author Pierre-Louis Bazin
  */
-public class SpectralVoxelEmbedding {
+public class SpectralVoxelDataEmbedding {
 
     
 	// jist containers
@@ -26,10 +26,10 @@ public class SpectralVoxelEmbedding {
     private float[] imgEmbedding;
     private float[] refEmbedding;
 
-    private int nx, ny, nz, nxyz;
+    private int nx, ny, nz, nt, nxyz;
 	private float rx, ry, rz;
 
-    private int nxr, nyr, nzr, nxyzr;
+    private int nxr, nyr, nzr, ntr, nxyzr;
 	private float rxr, ryr, rzr;
 
 	private float threshold=0.5f;
@@ -59,6 +59,12 @@ public class SpectralVoxelEmbedding {
 	public	static	final    byte	LINEAR = 30;
 	private byte affinity_type = LINEAR;
 	
+	// distance types
+	public static final byte    EUCLIDEAN = 11;
+	public static final byte    PRODUCT = 22;
+	public static final byte    COSINE = 33;
+	private byte distance_type = PRODUCT;
+	
 	// for debug and display
 	private static final boolean		debug=true;
 	private static final boolean		verbose=true;
@@ -78,15 +84,20 @@ public class SpectralVoxelEmbedding {
         else if (val.equals("Gauss")) affinity_type = GAUSS;
         else affinity_type = LINEAR;
 	}
+	public final void setDistanceType(String val) { 
+	    if (val.equals("Euclidean")) distance_type = EUCLIDEAN;
+        else if (val.equals("cosine")) distance_type = COSINE;
+        else distance_type = PRODUCT;
+	}
 					
-	public final void setImageDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
-	public final void setImageDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
+	public final void setImageDimensions(int x, int y, int z, int t) { nx=x; ny=y; nz=z; nt=t; nxyz=nx*ny*nz; }
+	public final void setImageDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2];nt=dim[3]; nxyz=nx*ny*nz; }
 	
 	public final void setImageResolutions(float x, float y, float z) { rx=x; ry=y; rz=z; }
 	public final void setImageResolutions(float[] res) { rx=res[0]; ry=res[1]; rz=res[2]; }
 				
-	public final void setReferenceDimensions(int x, int y, int z) { nxr=x; nyr=y; nzr=z; nxyzr=nxr*nyr*nzr; }
-	public final void setReferenceDimensions(int[] dim) { nxr=dim[0]; nyr=dim[1]; nzr=dim[2]; nxyzr=nxr*nyr*nzr; }
+	public final void setReferenceDimensions(int x, int y, int z, int t) { nxr=x; nyr=y; nzr=z; ntr=t; nxyzr=nxr*nyr*nzr; }
+	public final void setReferenceDimensions(int[] dim) { nxr=dim[0]; nyr=dim[1]; nzr=dim[2]; ntr=dim[3]; nxyzr=nxr*nyr*nzr; }
 	
 	public final void setReferenceResolutions(float x, float y, float z) { rxr=x; ryr=y; rzr=z; }
 	public final void setReferenceResolutions(float[] res) { rxr=res[0]; ryr=res[1]; rzr=res[2]; }
@@ -109,12 +120,13 @@ public class SpectralVoxelEmbedding {
 	    else if (affinity_type==GAUSS) return link*FastMath.exp(-0.5*dist*dist/space/space);
 	    else return link/(1.0+dist/space);
 	}
+	
 	   
     public void rotatedJointSpatialEmbedding(int depth, double alpha) {
 
 	    // make reference embedding
 	    System.out.println("-- building reference embedding --");
-	    voxelDistanceReferenceSparseEmbedding(depth, alpha);
+	    voxelDataReferenceSparseEmbedding(depth, alpha);
 	    float[] initEmbedding = new float[refEmbedding.length];
 	    for (int n=0;n<refEmbedding.length;n++) {
 	        initEmbedding[n] = refEmbedding[n];
@@ -122,16 +134,16 @@ public class SpectralVoxelEmbedding {
 	    
 	    // make joint embedding
 	    System.out.println("-- building joint embedding --");
-	    voxelDistanceJointSparseEmbedding(depth, alpha);
+	    voxelDataJointSparseEmbedding(depth, alpha);
 	    	    
 	    // make rotation back into reference space
 	    System.out.println("-- rotating joint embedding --");
 	    embeddingReferenceRotation(initEmbedding, refEmbedding, imgEmbedding, nxyzr, nxyz, ndims);
 	}
 	
-	public final void voxelDistanceSparseEmbedding(int depth, double alpha) {
+	public final void voxelDataSparseEmbedding(int depth, double alpha) {
 	    int npt=0;
-	    for (int xyz=0;xyz<nxyz;xyz++) if (inputImage[xyz]>threshold) {
+	    for (int xyz=0;xyz<nxyz;xyz++) if (inputImage[xyz]!=0) {
 	        npt++;
 	    }
         System.out.println("region size: "+npt);
@@ -143,7 +155,7 @@ public class SpectralVoxelEmbedding {
 	    int p=0;
 	    int s=1;
 	    for (int xyz=0;xyz<nxyz;xyz++) {
-	        if (inputImage[xyz]>threshold) {
+	        if (inputImage[xyz]!=0) {
                 if (p>s*step && s<=msize) {
                     samples[xyz] = s;
                     pts[s-1] = xyz;
@@ -156,24 +168,43 @@ public class SpectralVoxelEmbedding {
             }
 	    }
 	    
-        float[][] distances = new float[depth][nxyz];
-        int[][] closest = new int[depth][nxyz];
-        
-        // build the needed distance functions
-        ObjectTransforms.computeOutsideDistanceFunctions(depth, distances, closest, samples, nx, ny, nz);
-        
-        float maxdist = 0.0f;
-        for (int d=0;d<depth;d++) for (int xyz=0;xyz<nxyz;xyz++) {
-            if (distances[d][xyz]>maxdist) {
-                maxdist = distances[d][xyz];
-            }
-        }
-	    System.out.println("fast marching distances max: "+maxdist);
-
-	    // affinities
-        double[][] matrix = distanceMatrixFromVoxelSampling(distances, closest, pts, depth, msize, true);
+	    // build affinities from data distances
+        double[][] matrix = new double[msize][msize];
         for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            if (matrix[n][m]>0) matrix[n][m] = affinity(matrix[n][m]);
+            if (distance_type==EUCLIDEAN) {
+                for (int t=0;t<nt;t++) {
+                    matrix[n][m] += Numerics.square(inputImage[pts[n]+t*nxyz]-inputImage[pts[m]+t*nxyz]);
+                }
+                matrix[n][m] = FastMath.sqrt(matrix[n][m]);
+            } else if (distance_type==PRODUCT) {
+                double prodn = 0.0;
+                double prodm = 0.0;
+                for (int t=0;t<nt;t++) {
+                    matrix[n][m] += inputImage[pts[n]+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                    prodn += inputImage[pts[n]+t*nxyz]*inputImage[pts[n]+t*nxyz];
+                    prodm += inputImage[pts[m]+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                }
+                if (prodn*prodm>0) {
+                    matrix[n][m] = 1.0-matrix[n][m]/FastMath.sqrt(prodn*prodm);
+                } else {
+                    matrix[n][m] = -1.0;
+                }
+            } else if (distance_type==COSINE) {
+                double prodn = 0.0;
+                double prodm = 0.0;
+                for (int t=0;t<nt;t++) {
+                    matrix[n][m] += inputImage[pts[n]+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                    prodn += inputImage[pts[n]+t*nxyz]*inputImage[pts[n]+t*nxyz];
+                    prodm += inputImage[pts[m]+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                }
+                if (prodn*prodm>0) {
+                    matrix[n][m] = FastMath.acos(matrix[n][m]/FastMath.sqrt(prodn*prodm));
+                } else {
+                    matrix[n][m] = -FastMath.PI;
+                }
+            }
+            if (matrix[n][m]>=0) matrix[n][m] = affinity(matrix[n][m]);
+            else matrix[n][m] = 0.0;
         }
         
         // build Laplacian
@@ -211,9 +242,44 @@ public class SpectralVoxelEmbedding {
             for (int xyz=0;xyz<nxyz;xyz++) {
                 double sum=0.0;
                 double den=0.0;
-                for (int d=0;d<depth;d++) if (closest[d][xyz]>0) {
-                    sum += affinity(distances[d][xyz])*eig.getV().getEntry(closest[d][xyz]-1,eignum[dim]);
-                    den += affinity(distances[d][xyz]);
+                for (int m=0;m<msize;m++) {
+                    double dist=0.0;
+                    if (distance_type==EUCLIDEAN) {
+                        for (int t=0;t<ntr;t++) {
+                            dist += Numerics.square(inputImage[xyz+t*nxyz]-inputImage[pts[m]+t*nxyz]);
+                        }
+                        dist = FastMath.sqrt(dist);
+                    } else if (distance_type==PRODUCT) {
+                        double prodn = 0.0;
+                        double prodm = 0.0;
+                        for (int t=0;t<ntr;t++) {
+                            dist += inputImage[xyz+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                            prodn += inputImage[xyz+t*nxyz]*inputImage[xyz+t*nxyz];
+                            prodm += inputImage[pts[m]+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                        }
+                        if (prodn*prodm>0) {
+                            dist = 1.0-dist/FastMath.sqrt(prodn*prodm);
+                        } else {
+                            dist = -1.0;
+                        }
+                    } else if (distance_type==COSINE) {
+                        double prodn = 0.0;
+                        double prodm = 0.0;
+                        for (int t=0;t<ntr;t++) {
+                            dist += inputImage[xyz+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                            prodn += inputImage[xyz+t*nxyz]*inputImage[xyz+t*nxyz];
+                            prodm += inputImage[pts[m]+t*nxyz]*inputImage[pts[m]+t*nxyz];
+                        }
+                        if (prodn*prodm>0) {
+                            dist = FastMath.acos(dist/FastMath.sqrt(prodn*prodm));
+                        } else {
+                            dist = -FastMath.PI;
+                        }
+                    }
+                    if (dist>=0) {
+                        sum += affinity(dist)*eig.getV().getEntry(m,eignum[dim]);
+                        den += affinity(dist);
+                    }
                 }
                 if (den>0) {
                     init[dim][xyz] = (float)(sum/den);
@@ -253,7 +319,7 @@ public class SpectralVoxelEmbedding {
         return;
 	}
 	
-	public final void voxelDistanceJointSparseEmbedding(int depth, double alpha) {
+	public final void voxelDataJointSparseEmbedding(int depth, double alpha) {
 	    int nrf=0;
 	    for (int xyz=0;xyz<nxyzr;xyz++) if (refImage[xyz]>threshold) {
 	        nrf++;
@@ -464,9 +530,9 @@ public class SpectralVoxelEmbedding {
 		return;
 	}
 	
-	public final void voxelDistanceReferenceSparseEmbedding(int depth, double alpha) {
+	public final void voxelDataReferenceSparseEmbedding(int depth, double alpha) {
 	    int nrf=0;
-	    for (int xyz=0;xyz<nxyzr;xyz++) if (refImage[xyz]>threshold) {
+	    for (int xyz=0;xyz<nxyzr;xyz++) if (refImage[xyz]!=0) {
 	        nrf++;
 	    }
         int stpf = Numerics.floor(nrf/msize);
@@ -477,7 +543,7 @@ public class SpectralVoxelEmbedding {
 	    int p=0;
 	    int s=1;
 	    for (int xyz=0;xyz<nxyzr;xyz++) {
-	        if (refImage[xyz]>threshold) {
+	        if (refImage[xyz]!=0) {
                 if (p>s*stpf && s<=msize) {
                     samplesRef[xyz] = s;
                     prf[s-1] = xyz;
@@ -489,22 +555,44 @@ public class SpectralVoxelEmbedding {
                 samplesRef[xyz] = -1;
             }
 	    }
-	    float[][] distancesRef = new float[depth][nxyzr];
-        int[][] closestRef = new int[depth][nxyzr];
-        
-        // build the needed distance functions
-        ObjectTransforms.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, samplesRef, nxr, nyr, nzr);
-        
-	    float maxdistRef = 0.0f;
-        for (int d=0;d<depth;d++) for (int xyz=0;xyz<nxyzr;xyz++) {
-            if (distancesRef[d][xyz]>maxdistRef) maxdistRef = distancesRef[d][xyz];
-        }
-	    System.out.println("fast marching distances max: "+maxdistRef);
-
-	    // affinities
-        double[][] matrixRef = distanceMatrixFromVoxelSampling(distancesRef, closestRef, prf, depth, msize, true);
+	    
+	    // build affinities from data distances
+        double[][] matrixRef = new double[msize][msize];
         for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
-            if (matrixRef[n][m]>0) matrixRef[n][m] = affinity(matrixRef[n][m]);
+            if (distance_type==EUCLIDEAN) {
+                for (int t=0;t<ntr;t++) {
+                    matrixRef[n][m] += Numerics.square(refImage[prf[n]+t*nxyz]-refImage[prf[m]+t*nxyz]);
+                }
+                matrixRef[n][m] = FastMath.sqrt(matrixRef[n][m]);
+            } else if (distance_type==PRODUCT) {
+                double prodn = 0.0;
+                double prodm = 0.0;
+                for (int t=0;t<ntr;t++) {
+                    matrixRef[n][m] += refImage[prf[n]+t*nxyz]*refImage[prf[m]+t*nxyz];
+                    prodn += refImage[prf[n]+t*nxyz]*refImage[prf[n]+t*nxyz];
+                    prodm += refImage[prf[m]+t*nxyz]*refImage[prf[m]+t*nxyz];
+                }
+                if (prodn*prodm>0) {
+                    matrixRef[n][m] = 1.0-matrixRef[n][m]/FastMath.sqrt(prodn*prodm);
+                } else {
+                    matrixRef[n][m] = -1.0;
+                }
+            } else if (distance_type==COSINE) {
+                double prodn = 0.0;
+                double prodm = 0.0;
+                for (int t=0;t<ntr;t++) {
+                    matrixRef[n][m] += refImage[prf[n]+t*nxyz]*refImage[prf[m]+t*nxyz];
+                    prodn += refImage[prf[n]+t*nxyz]*refImage[prf[n]+t*nxyz];
+                    prodm += refImage[prf[m]+t*nxyz]*refImage[prf[m]+t*nxyz];
+                }
+                if (prodn*prodm>0) {
+                    matrixRef[n][m] = FastMath.acos(matrixRef[n][m]/FastMath.sqrt(prodn*prodm));
+                } else {
+                    matrixRef[n][m] = -FastMath.PI;
+                }
+            }
+            if (matrixRef[n][m]>=0) matrixRef[n][m] = affinity(matrixRef[n][m]);
+            else matrixRef[n][m] = 0.0;
         }
         
         // build Laplacian
@@ -541,9 +629,44 @@ public class SpectralVoxelEmbedding {
             for (int xyz=0;xyz<nxyzr;xyz++) {
                 double sum=0.0;
                 double den=0.0;
-                for (int d=0;d<depth;d++) if (closestRef[d][xyz]>0) {
-                    sum += affinity(distancesRef[d][xyz])*eig.getV().getEntry(closestRef[d][xyz]-1,eignum[dim]);
-                    den += affinity(distancesRef[d][xyz]);
+                for (int m=0;m<msize;m++) {
+                    double dist=0.0;
+                    if (distance_type==EUCLIDEAN) {
+                        for (int t=0;t<ntr;t++) {
+                            dist += Numerics.square(refImage[xyz+t*nxyzr]-refImage[prf[m]+t*nxyzr]);
+                        }
+                        dist = FastMath.sqrt(dist);
+                    } else if (distance_type==PRODUCT) {
+                        double prodn = 0.0;
+                        double prodm = 0.0;
+                        for (int t=0;t<ntr;t++) {
+                            dist += refImage[xyz+t*nxyzr]*refImage[prf[m]+t*nxyzr];
+                            prodn += refImage[xyz+t*nxyzr]*refImage[xyz+t*nxyzr];
+                            prodm += refImage[prf[m]+t*nxyzr]*refImage[prf[m]+t*nxyzr];
+                        }
+                        if (prodn*prodm>0) {
+                            dist = 1.0-dist/FastMath.sqrt(prodn*prodm);
+                        } else {
+                            dist = -1.0;
+                        }
+                    } else if (distance_type==COSINE) {
+                        double prodn = 0.0;
+                        double prodm = 0.0;
+                        for (int t=0;t<ntr;t++) {
+                            dist += refImage[xyz+t*nxyz]*refImage[prf[m]+t*nxyz];
+                            prodn += refImage[xyz+t*nxyz]*refImage[xyz+t*nxyz];
+                            prodm += refImage[prf[m]+t*nxyz]*refImage[prf[m]+t*nxyz];
+                        }
+                        if (prodn*prodm>0) {
+                            dist = FastMath.acos(dist/FastMath.sqrt(prodn*prodm));
+                        } else {
+                            dist = -FastMath.PI;
+                        }
+                    }
+                    if (dist>=0) {
+                        sum += affinity(dist)*eig.getV().getEntry(m,eignum[dim]);
+                        den += affinity(dist);
+                    }
                 }
                 if (den>0) {
                     initRef[dim][xyz] = (float)(sum/den);
