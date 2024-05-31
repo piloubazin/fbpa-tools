@@ -26,7 +26,10 @@ public class SpectralMeshEmbedding {
     private float[] pointListRef;
     private int[] triangleListRef;
     private float[] embeddingListRef;
-
+    
+    private float[] refMapping = null;
+    private int nxm, nym, nzm, nxyzm;
+	
 	private int ndims = 10;
 	private int msize = 800;
 	private float scale = 1.0f;
@@ -63,6 +66,8 @@ public class SpectralMeshEmbedding {
 	public final void setReferencePoints(float[] val) { pointListRef = val; }
 	public final void setReferenceTriangles(int[] val) { triangleListRef = val; }
 
+	public final void setMapping(float[] val) { refMapping = val; }
+	public final void setMappingDimensions(int x, int y, int z) { nxm=x; nym=y; nzm=z; nxyzm=nxm*nym*nzm; }
 
 	public final void setDimensions(int val) { ndims = val; }
 	public final void setMatrixSize(int val) { msize = val; }
@@ -74,6 +79,7 @@ public class SpectralMeshEmbedding {
         else if (val.equals("Gauss")) affinity_type = GAUSS;
         else affinity_type = LINEAR;
 	}
+	public final void setRenormalize(boolean val) { normalize = val; }
 					
 	// create outputs
 	public final float[] 	getEmbeddingValues() { return embeddingList; }
@@ -106,8 +112,9 @@ public class SpectralMeshEmbedding {
 	    
 	    // make joint embedding
 	    System.out.println("-- building joint embedding --");
-	    meshDistanceJointSparseEmbedding(depth, alpha);
-	    	    
+	    //meshDistanceJointSparseEmbedding(depth, alpha);
+	    meshDistanceJointSparseMappedEmbedding(depth, alpha);
+	    
 	    // make rotation back into reference space
 	    System.out.println("-- rotating joint embedding --");
 	    int npt=pointList.length/3;
@@ -260,6 +267,207 @@ public class SpectralMeshEmbedding {
 	    // affinities
         double[][] distmtx = distanceMatrixFromMeshSampling(distances, closest, depth, step, msize, true);
         double[][] distmtxRef = distanceMatrixFromMeshSampling(distancesRef, closestRef, depth, stpf, msize, true);
+        
+        // linking functions
+        double[][] linker = new double[msize][msize];
+        for (int n=0;n<msize;n++) for (int m=n;m<msize;m++) {
+            // linking distance: average of geodesic and point distances?
+            // just the geodesics seems most stable.
+            //double distN = FastMath.sqrt(Numerics.square(pointList[3*n+X]-pointListRef[3*n+X])
+            //                            +Numerics.square(pointList[3*n+Y]-pointListRef[3*n+Y])
+            //                            +Numerics.square(pointList[3*n+Z]-pointListRef[3*n+Z]));
+
+            //double distM = FastMath.sqrt(Numerics.square(pointList[3*m+X]-pointListRef[3*m+X])
+            //                            +Numerics.square(pointList[3*m+Y]-pointListRef[3*m+Y])
+            //                            +Numerics.square(pointList[3*m+Z]-pointListRef[3*m+Z]));
+
+            // note that it is implied that the sampled points are corresponding across both meshes
+            // (not always true!)
+            linker[n][m] = 0.5*(distmtx[n][m]+distmtxRef[n][m]);
+            linker[m][n] = linker[n][m];
+        }
+        
+        double[][] matrix = new double[2*msize][2*msize];
+        for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+            matrix[n][m] = affinity(distmtx[n][m]);
+            matrix[n][m+msize] = linking(linker[n][m]);
+            matrix[m+msize][n] = linking(linker[m][n]);
+            matrix[n+msize][m+msize] = affinity(distmtxRef[n][m]);
+        }
+        
+        // build Laplacian
+        buildLaplacian(matrix, 2*msize, alpha);
+            
+        // SVD? no, eigendecomposition (squared matrix)
+        RealMatrix mtx = null;
+        mtx = new Array2DRowRealMatrix(matrix);
+        EigenDecomposition eig = new EigenDecomposition(mtx);
+            
+	    // add a dimension for lowest eigenvector
+        double[] eigval = new double[ndims+1];
+        int[] eignum = new int[ndims+1];
+        eigval[0] = 1e16;
+        for (int n=0;n<2*msize;n++) {
+            if (eig.getRealEigenvalues()[n]<eigval[0]) {
+                eigval[0] = eig.getRealEigenvalues()[n];
+                eignum[0] = n;
+            }
+        }
+        for (int s=1;s<ndims+1;s++) {
+            eigval[s] = 1e16;
+            for (int n=0;n<2*msize;n++) {
+                if (eig.getRealEigenvalues()[n]<eigval[s] && eig.getRealEigenvalues()[n]>eigval[s-1]) {
+                    eigval[s] = eig.getRealEigenvalues()[n];
+                    eignum[s] = n;
+                }
+            }
+        }
+        // from mean coord to neighbors
+        double[][] init = new double[ndims+1][npt+nrf];
+        for (int dim=0;dim<ndims+1;dim++) {
+            System.out.println("eigenvalue "+eignum[dim]+": "+eigval[dim]);
+            for (int n=0;n<npt;n++) {
+                double sum=0.0;
+                double den=0.0;
+                for (int d=0;d<depth;d++) if (closest[d][n]>0) {
+                    sum += affinity(distances[d][n])*eig.getV().getEntry(closest[d][n]-1,eignum[dim]);
+                    den += affinity(distances[d][n]);
+                }
+                if (den>0) {
+                    init[dim][n] = (float)(sum/den);
+                }
+            }
+            for (int n=0;n<nrf;n++) {
+                double sum=0.0;
+                double den=0.0;
+                for (int d=0;d<depth;d++) if (closestRef[d][n]>0) {
+                    sum += affinity(distancesRef[d][n])*eig.getV().getEntry(msize+closestRef[d][n]-1,eignum[dim]);
+                    den += affinity(distancesRef[d][n]);
+                }
+                if (den>0) {
+                    init[dim][npt+n] = (float)(sum/den);
+                }
+            }
+        }
+
+        embeddingList = new float[npt*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
+            for (int n=0;n<npt;n++) {
+                embeddingList[n+(dim-1)*npt] = (float)(init[dim][n]);
+                norm += embeddingList[n+(dim-1)*npt]*embeddingList[n+(dim-1)*npt];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<npt;n++) {
+                embeddingList[n+(dim-1)*npt] /= norm;
+            }
+        }
+        
+        // check the result
+        System.out.println("orthogonality");
+        double mean = 0.0;
+        double min = 1e9;
+        double max = -1e9;
+        double num = 0.0;
+        for (int v1=0;v1<ndims-1;v1++) for (int v2=v1+1;v2<ndims;v2++) {
+            double prod=0.0;
+            for (int m=0;m<npt;m++) prod += embeddingList[m+v1*npt]*embeddingList[m+v2*npt];
+            mean += prod;
+            num++;
+            if (prod>max) max = prod;
+            if (prod<min) min = prod;
+        }
+        System.out.println("["+min+" | "+mean/num+" | "+max+"]");
+
+        embeddingListRef = new float[nrf*ndims];
+        for (int dim=1;dim<ndims+1;dim++) {
+            double norm=0.0;
+            for (int n=0;n<nrf;n++) {
+                embeddingListRef[n+(dim-1)*nrf] = (float)(init[dim][npt+n]);
+                norm += embeddingListRef[n+(dim-1)*nrf]*embeddingListRef[n+(dim-1)*nrf];
+            }
+            norm = FastMath.sqrt(norm);
+            if (normalize) for (int n=0;n<nrf;n++) {
+                embeddingListRef[n+(dim-1)*nrf] /= norm;
+            }
+        }
+        
+		return;
+	}
+	
+	public final void meshDistanceJointSparseMappedEmbedding(int depth, double alpha) {
+	    int nrf=pointListRef.length/3;
+        int stpf = Numerics.floor(nrf/msize);
+	    System.out.println("step size: "+stpf);
+            
+	    int[] samplesRef = new int[nrf];
+	    int[] prf = new int[msize];
+	    for (int n=0;n<msize*stpf;n+=stpf) {
+	        samplesRef[n] = n/stpf+1;
+	        prf[n/stpf] = n;
+	    }
+	    float[][] distancesRef = new float[depth][nrf];
+        int[][] closestRef = new int[depth][nrf];
+        
+        // build the needed distance functions
+        MeshProcessing.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, pointListRef, triangleListRef, samplesRef);
+        
+        // select subject points aligned with reference
+        int npt=pointList.length/3;
+        int[] samples = new int[npt];
+	    int[] pts = new int[msize];
+	    
+	    for (int n=0;n<msize;n++) {
+	        float xs,ys,zs;
+	        if (refMapping!=null) {
+                int xr = Numerics.round(pointListRef[3*prf[n]+X]);
+                int yr = Numerics.round(pointListRef[3*prf[n]+Y]);
+                int zr = Numerics.round(pointListRef[3*prf[n]+Z]);
+                
+                xs = refMapping[xr+nxm*yr+nxm*nym*zr+X*nxyzm];
+                ys = refMapping[xr+nxm*yr+nxm*nym*zr+Y*nxyzm];
+                zs = refMapping[xr+nxm*yr+nxm*nym*zr+Z*nxyzm];
+            } else {
+                xs = pointListRef[3*prf[n]+X];
+                ys = pointListRef[3*prf[n]+Y];
+                zs = pointListRef[3*prf[n]+Z];
+            }
+	        // search for closest neighbor: brute force?? 
+	        // we could skip some if too long, it does not need to be precise
+	        float min = 1e9f;
+	        int best=-1;
+	        for (int p=0;p<npt;p++) {
+	            float dist = (xs-pointList[3*p+X])*(xs-pointList[3*p+X])
+	                        +(ys-pointList[3*p+Y])*(ys-pointList[3*p+Y])
+	                        +(zs-pointList[3*p+Z])*(zs-pointList[3*p+Z]);
+	                        
+	            if (dist<min) {
+	                best = p;
+	                min = dist;
+	            }
+	        }
+	        pts[n] = best;
+	        samples[best] = n+1;
+        }
+	    float[][] distances = new float[depth][npt];
+        int[][] closest = new int[depth][npt];
+        
+        // build the needed distance functions
+        MeshProcessing.computeOutsideDistanceFunctions(depth, distances, closest, pointList, triangleList, samples);
+        
+	    float maxdist = 0.0f;
+        for (int d=0;d<depth;d++) for (int n=0;n<npt;n++) {
+            if (distances[d][n]>maxdist) maxdist = distances[d][n];
+        }
+	    float maxdistRef = 0.0f;
+        for (int d=0;d<depth;d++) for (int n=0;n<nrf;n++) {
+            if (distancesRef[d][n]>maxdistRef) maxdistRef = distancesRef[d][n];
+        }
+	    System.out.println("fast marching distances max: "+maxdist+", "+maxdistRef);
+
+	    // affinities
+        double[][] distmtx = distanceMatrixFromGeneralMeshSampling(distances, closest, pts, depth, msize, true);
+        double[][] distmtxRef = distanceMatrixFromGeneralMeshSampling(distancesRef, closestRef, prf, depth, msize, true);
         
         // linking functions
         double[][] linker = new double[msize][msize];
@@ -594,6 +802,115 @@ public class SpectralMeshEmbedding {
                         if (distances[d][n]>dmax) dmax = distances[d][n];
                         if (distances[d][n]>0) {
                             dmean += distances[d][n];
+                            nmean++;
+                        }
+                    }
+                }
+            }
+            dmean /= nmean;
+            System.out.println("ngb distances (mean: "+dmean+", max:"+dmax+")");
+        }
+        return matrix;
+    }
+    
+	private final double[][] distanceMatrixFromGeneralMeshSampling(float[][] distances, int[][] closest, int[] pts, int depth, int msize, boolean fullDistance) {
+        // precompute surface-based distances
+	    double[][] matrix = new double[msize][msize];
+	    
+	    if (fullDistance) {
+            // build a complete sample distance map? should be doable, roughly O(msize^2)
+            // very slow for large meshes, though
+            float[][] sampledist = new float[msize][msize];
+            for (int n=0;n<msize;n++) {
+                for (int d=0;d<depth;d++) {
+                    int m = (closest[d][pts[n]]-1);
+                    if (m>=0) {
+                        sampledist[n][m] = distances[d][pts[n]];
+                        sampledist[m][n] = distances[d][pts[n]];
+                    }
+                }
+            }
+            float dmax=0.0f, dmean=0.0f;
+            int nmean=0;
+            for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+                if (sampledist[n][m]>dmax) dmax = sampledist[n][m];
+                if (sampledist[n][m]>0) {
+                    dmean += sampledist[n][m];
+                    nmean++;
+                }
+            }
+            dmean /= nmean;
+            System.out.println("(mean: "+dmean+", max:"+dmax+")");
+    
+            // set to false to skip the propagation
+            int missing=1;
+            int prev = -1;
+            int nmiss=0;
+            while (missing>0 && missing!=prev) {
+                prev = missing;
+                missing=0;
+                for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+                    if (sampledist[n][m]>0) {
+                        for (int d=0;d<depth;d++) {
+                            int jm = (closest[d][pts[n]]-1);
+                            if (jm>=0) {
+                                if (sampledist[jm][m]==0) sampledist[jm][m] = distances[d][pts[n]]+sampledist[n][m];
+                                else sampledist[jm][m] = Numerics.min(sampledist[jm][m],distances[d][pts[n]]+sampledist[n][m]);
+                                sampledist[m][jm] = sampledist[jm][m];
+                            }
+                            int jn = (closest[d][pts[m]]-1);
+                            if (jn>=0) {
+                                if (sampledist[jn][n]==0) sampledist[jn][n] = distances[d][pts[m]]+sampledist[n][m];
+                                else sampledist[jn][n] = Numerics.min(sampledist[jn][n],distances[d][pts[m]]+sampledist[n][m]);
+                                sampledist[n][jn] = sampledist[jn][n];
+                            }
+                        }
+                    } else {
+                        missing++;
+                    }
+                }
+                nmiss++;
+            }
+            System.out.println("approximate distance propagation: "+nmiss);
+            dmax=0.0f; 
+            dmean=0.0f;
+            for (int n=0;n<msize;n++) for (int m=0;m<msize;m++) {
+                if (sampledist[n][m]>dmax) dmax = sampledist[n][m];
+                dmean += sampledist[n][m];
+            }
+            dmean /= msize*msize;
+            System.out.println("(mean: "+dmean+", max:"+dmax+")");
+            
+            // reset diagonal to zero to have correct distance when closest
+            for (int n=0;n<msize;n++) {
+                sampledist[n][n] = 0.0f;
+            }
+            
+            if (scale<0) scale = dmean;
+            
+            for (int n=0;n<msize;n++) {
+                for (int m=n+1;m<msize;m++) {
+                    double dist = sampledist[n][m];
+                    
+                    if (dist>0) {
+                        matrix[n][m] = dist;
+                        matrix[m][n] = dist;
+                    }
+                }
+            }
+        } else {
+            float dmax=0.0f, dmean=0.0f;
+            int nmean=0;
+            for (int n=0;n<msize;n++) {
+                for (int d=0;d<depth;d++) {
+                    int m = (closest[d][pts[n]]-1);
+                    if (m>=0) {
+                        matrix[n][m] = distances[d][pts[n]];
+                        matrix[m][n] = matrix[n][m];
+                        
+                        if (distances[d][pts[n]]>dmax) dmax = distances[d][pts[n]];
+                        if (distances[d][pts[n]]>0) {
+                            dmean += distances[d][pts[n]];
                             nmean++;
                         }
                     }
