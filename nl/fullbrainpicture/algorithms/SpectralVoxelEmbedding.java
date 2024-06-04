@@ -262,13 +262,19 @@ public class SpectralVoxelEmbedding {
 	    System.out.println("step size: "+stpf);
             
 	    int[] samplesRef = new int[nxyzr];
+	    int[][] prf3 = new int[msize][3];
 	    int[] prf = new int[msize];
 	    int p=0;
 	    int s=1;
-	    for (int xyz=0;xyz<nxyzr;xyz++) {
+	    //for (int xyz=0;xyz<nxyzr;xyz++) {
+	    for (int x=0;x<nxr;x++) for (int y=0;y<nyr;y++) for (int z=0;z<nzr;z++) {
+	        int xyz = x+nxr*y+nxr*nyr*z;
 	        if (refImage[xyz]>threshold) {
                 if (p>s*stpf && s<=msize) {
                     samplesRef[xyz] = s;
+                    prf3[s-1][X] = x;
+                    prf3[s-1][Y] = y;
+                    prf3[s-1][Z] = z;
                     prf[s-1] = xyz;
                     s++;
                 }
@@ -287,11 +293,25 @@ public class SpectralVoxelEmbedding {
         // select subject points aligned with reference
         int[] samples = new int[nxyz];
 	    int[] pts = new int[msize];
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (inputImage[xyz]<=threshold) {
+                // mask out regions outside the structure of interest
+                samples[xyz] = -1;
+            }
+	    }
 	    
 	    for (int n=0;n<msize;n++) {
-	        int xs = Numerics.round(refMapping[prf[n]+X*nxyzr]);
-	        int ys = Numerics.round(refMapping[prf[n]+Y*nxyzr]);
-	        int zs = Numerics.round(refMapping[prf[n]+Z*nxyzr]);
+	        int xs,ys,zs;
+	        if (refMapping==null) {
+	            xs = prf3[n][X];
+	            ys = prf3[n][Y];
+	            zs = prf3[n][Z];
+	        } else {
+	            int xyzr = prf3[n][X] + nxr*prf3[n][Y] + nxr*nyr*prf3[n][Z];
+	            xs = Numerics.round(refMapping[xyzr+X*nxyzr]);
+	            ys = Numerics.round(refMapping[xyzr+Y*nxyzr]);
+	            zs = Numerics.round(refMapping[xyzr+Z*nxyzr]);
+	        }
 	        // search for closest neighbor
 	        if (inputImage[xs+nx*ys+nx*ny*zs]<=threshold) {
                 boolean found = false;
