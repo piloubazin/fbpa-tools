@@ -28,6 +28,8 @@ public class SuperVoxelSegmentation {
 	private float scaling;
 	private float noise;
 	private int nngb = 26;
+	private int maxiter = 10;
+	private float maxdiff = 0.01f;
 
 	private float[] parcelImage;
 	private int[] segImage;
@@ -80,6 +82,8 @@ public class SuperVoxelSegmentation {
 			
 	public final void setScalingFactor(float val) { scaling = val; }
 	public final void setNoiseLevel(float val) { noise = val; }
+	public final void setMaxIterations(int val) { maxiter = val; }
+	public final void setMaxDifference(float val) { maxdiff = val; }
 	
 	// create outputs
 	public final int[] getSegmentationImage() { return segImage; }
@@ -776,18 +780,19 @@ public class SuperVoxelSegmentation {
             int label =xyzs+1;
             int ngblb = ngblist[xyzs][ngb];
                 
-            if (noise[label-1]>0.0 && noise[ngblb-1]>0.0) {
+            if (noise[label-1]>0.0 && noise[ngblb-1]>0.0 && incount[label-1]>0 && incount[ngblb-1]>0) {
                 double sigmaAB = (incount[label-1]*noise[label-1]*noise[label-1] + incount[ngblb-1]*noise[ngblb-1]*noise[ngblb-1]
                                     + incount[label-1]*incount[ngblb-1]/(incount[label-1]+incount[ngblb-1])
                                         *(interior[label-1]-interior[ngblb-1])*(interior[label-1]-interior[ngblb-1]))
                                             /(incount[label-1]+incount[ngblb-1]);
-                                                
-                double jsdiv = 0.5*FastMath.log(sigmaAB) 
-                                - 0.5*incount[label-1]/Numerics.max(1.0,(incount[label-1]+incount[ngblb-1]))
-                                    *FastMath.log(noise[label-1]*noise[label-1])
-                                - 0.5*incount[ngblb-1]/Numerics.max(1.0,(incount[label-1]+incount[ngblb-1]))
-                                    *FastMath.log(noise[ngblb-1]*noise[ngblb-1]);
-                bdproba[xyzs][ngb] = (float)FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0);
+                if (sigmaAB>0.0) {                                
+                    double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                    - 0.5*incount[label-1]/(incount[label-1]+incount[ngblb-1])
+                                        *FastMath.log(noise[label-1]*noise[label-1])
+                                    - 0.5*incount[ngblb-1]/(incount[label-1]+incount[ngblb-1])
+                                        *FastMath.log(noise[ngblb-1]*noise[ngblb-1]);
+                    bdproba[xyzs][ngb] = (float)Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                }
             }
         }
         
@@ -801,23 +806,98 @@ public class SuperVoxelSegmentation {
 	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
 	        int label = parcel[xyz];
 	        
-	        int lb=-1;
+	        int seg=-1;
 	        for (int n=0;n<nseg;n++) if (lbseg[n]==initsegImage[xyz]) {
-	            lb=n;
+	            seg=n;
 	            n=nseg;
 	        }
-	        if (lb>-1) {
+	        if (seg>-1) {
 	            // note: here we use the same weighting function that makes border regions less impactful, maybe not wise?
-                parcelmem[label-1][lb] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*priorImage[xyz];
+                parcelmem[label-1][seg] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*priorImage[xyz];
             }
 	    }
-        
+	    /*
+	    // normalize (not necessarily to sum to 1 anymore..
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) {
+	            for (int n=0;n<nseg;n++)  {
+	                parcelmem[xyzs][n] /= incount[xyzs];
+	            }
+	        }
+	    }*/
+	    // normalize to parcel-level probabilities
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        float memsum=0.0f;
+	        for (int n=0;n<nseg;n++)  {
+	            memsum += parcelmem[xyzs][n];
+	        }
+	        if (memsum>0) {
+	            for (int n=0;n<nseg;n++)  {
+	                parcelmem[xyzs][n] /= memsum;
+	            }
+	        }
+	    }
+         
 	    // run the propagation across neighbors (iterative)
-                
+	    float wngb = 0.5f;
+	    float[][] newmem = new float[nsxyz][nseg];
+	    float diff=maxdiff;
+        for (int t=0;t<maxiter && diff>=maxdiff;t++) {
+            for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+                if (t==0) for (int n=0;n<nseg;n++) {
+                    newmem[xyzs][n] = parcelmem[xyzs][n];
+                }
+                // only use the most similar neighbor (lowest boundary score)
+                int bestngb=-1;
+                if (ngblist[xyzs].length>0) {
+                    float bestproba = 1.0f;
+                    for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) {
+                        if (bdproba[xyzs][ngb]>0 && bdproba[xyzs][ngb]<bestproba) {
+                            bestngb = ngb;
+                            bestproba = bdproba[xyzs][ngb];
+                        }
+                    }
+                }
+                if (bestngb>-1) {
+                    // swap probabilities if and only if neighbor is improved
+                    double maxmem = 0.0;
+                    double maxngb = 0.0;
+                    for (int n=0;n<nseg;n++) {
+                        if (parcelmem[xyzs][n]>maxmem) maxmem = parcelmem[xyzs][n];
+                        double ngbmem = FastMath.sqrt((1.0-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n]);
+                        if (ngbmem>maxngb) maxngb = ngbmem;
+                    }
+                    if (maxngb>maxmem) {
+                        float sum=0.0f;
+                        for (int n=0;n<nseg;n++) {
+                            //newmem[xyzs][n] = (float)FastMath.sqrt((1.0-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n]);
+                            // if we normalize to 1, the boundary factor disappears (same for all classes)
+                            //newmem[xyzs][n] = parcelmem[ngblist[xyzs][bestngb]-1][n];
+                            newmem[xyzs][n] = parcelmem[xyzs][n] + (float)FastMath.sqrt((1.0-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n]);
+                            sum += newmem[xyzs][n];
+                            // take a weighted average to avoid oscillations? doesn't seem to help much
+                            //newmem[xyzs][n] = (parcelmem[xyzs][n] + (1.0f-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n])
+                            //                    /(1.0f+(1.0f-bdproba[xyzs][bestngb]));
+                            
+                        }
+                        if (sum>0) for (int n=0;n<nseg;n++) newmem[xyzs][n] /= sum;
+                    }
+                }
+            }
+            diff = 0.0f;
+            for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+                for (int n=0;n<nseg;n++) {
+                    diff = Numerics.max(diff,Numerics.abs(parcelmem[xyzs][n]-newmem[xyzs][n]));
+                    
+                    parcelmem[xyzs][n] = newmem[xyzs][n];    
+                }
+            }
+            System.out.println("iter "+t+", max diff: "+diff);
+        }
+            
 	    // export the result
-	    int[] segImage = new int[nxyz];
-	    float[] memsImage = new float[nxyz];
-	    float[] parcelImage = new float[nxyz];
+	    segImage = new int[nxyz];
+	    memsImage = new float[nxyz];
 	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
 	        int label = parcel[xyz];
 	        
@@ -826,6 +906,12 @@ public class SuperVoxelSegmentation {
 	        
 	        segImage[xyz] = lbseg[best];
 	        memsImage[xyz] = parcelmem[label-1][best];
+	        /* debug
+	        int ngblb = neighbor[xyz];
+	        for (int ngb=0;ngb<ngblist[label-1].length;ngb++) if (ngblb==ngblist[label-1][ngb]) {
+	            memsImage[xyz] = bdproba[label-1][ngb];
+	        }
+	        */
 	    }
 	    
 	    return;
