@@ -816,15 +816,15 @@ public class SuperVoxelSegmentation {
                 parcelmem[label-1][seg] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*priorImage[xyz];
             }
 	    }
-	    /*
-	    // normalize (not necessarily to sum to 1 anymore..
+	    // average over ROI
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
 	        if (incount[xyzs]>0) {
 	            for (int n=0;n<nseg;n++)  {
 	                parcelmem[xyzs][n] /= incount[xyzs];
 	            }
 	        }
-	    }*/
+	    }
+	    /* do NOT normalize to 1, because with only a max probability then most places are 0 or 1
 	    // normalize to parcel-level probabilities
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
 	        float memsum=0.0f;
@@ -835,6 +835,16 @@ public class SuperVoxelSegmentation {
 	            for (int n=0;n<nseg;n++)  {
 	                parcelmem[xyzs][n] /= memsum;
 	            }
+	        }
+	    }*/
+	    // add remaining proba to all for non-zero values everywhere
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        float sum=0.0f;
+	        for (int n=0;n<nseg;n++) sum+= parcelmem[xyzs][n];
+	        if (sum<1.0f) {
+	            for (int n=0;n<nseg;n++) parcelmem[xyzs][n] += (1.0f-sum)/nseg;
+	        } else {
+	            System.out.print("1");
 	        }
 	    }
          
@@ -847,6 +857,7 @@ public class SuperVoxelSegmentation {
                 if (t==0) for (int n=0;n<nseg;n++) {
                     newmem[xyzs][n] = parcelmem[xyzs][n];
                 }
+                /* why not all?
                 // only use the most similar neighbor (lowest boundary score)
                 int bestngb=-1;
                 if (ngblist[xyzs].length>0) {
@@ -883,7 +894,24 @@ public class SuperVoxelSegmentation {
                         if (sum>0) for (int n=0;n<nseg;n++) newmem[xyzs][n] /= sum;
                     }
                 }
-            }
+                */
+                // for all neighbors, update if higher/lower
+                for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) {
+                    // work class by class, normalization will affect the rest
+                    for (int n=0;n<nseg;n++) {
+                        double ngbsame = FastMath.sqrt((1.0-bdproba[xyzs][ngb])*parcelmem[ngblist[xyzs][ngb]-1][n]);
+                        double ngbdiff = FastMath.sqrt(bdproba[xyzs][ngb]*parcelmem[ngblist[xyzs][ngb]-1][n]);
+                        if (ngbsame>parcelmem[xyzs][n]) {
+                            newmem[xyzs][n] = (1.0f+((float)ngbsame-parcelmem[xyzs][n]))*parcelmem[xyzs][n];
+                        } else if (ngbdiff>parcelmem[xyzs][n]) {
+                            newmem[xyzs][n] = (1.0f-((float)ngbdiff-parcelmem[xyzs][n]))*parcelmem[xyzs][n];
+                        }
+                    }
+                }
+                float sum=0.0f;
+                for (int n=0;n<nseg;n++) sum+= newmem[xyzs][n];
+                if (sum>0) for (int n=0;n<nseg;n++) newmem[xyzs][n] /= sum;
+	        }
             diff = 0.0f;
             for (int xyzs=0;xyzs<nsxyz;xyzs++) {
                 for (int n=0;n<nseg;n++) {
