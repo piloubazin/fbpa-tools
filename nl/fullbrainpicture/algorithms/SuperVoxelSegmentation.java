@@ -795,6 +795,25 @@ public class SuperVoxelSegmentation {
                 }
             }
         }
+        // use mean, stdev to define a sigmoid transform (?)
+        double avg = 0.0;
+        double std = 0.0;
+        double den = 0.0;
+        for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) if (bdproba[xyzs][ngb]>0) {
+            avg += bdproba[xyzs][ngb];
+            den++;
+        }
+        if (den>0) avg /= den;
+        for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) if (bdproba[xyzs][ngb]>0) {
+            std += (bdproba[xyzs][ngb]-avg)*(bdproba[xyzs][ngb]-avg);
+        }
+        if (den>0) std /= den;
+        std = FastMath.sqrt(std);
+        
+        System.out.println("Boundaries distribution (m,s): "+avg+", "+std);
+        for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) if (bdproba[xyzs][ngb]>0) {
+            bdproba[xyzs][ngb] = (float)(1.0/(1.0+FastMath.exp(-(bdproba[xyzs][ngb]-avg)/(std))));
+        }
         
         // need the number of possible classes
         int[] lbseg = ObjectLabeling.listLabels(initsegImage, nx, ny, nz);
@@ -824,30 +843,15 @@ public class SuperVoxelSegmentation {
 	            }
 	        }
 	    }
-	    /* do NOT normalize to 1, because with only a max probability then most places are 0 or 1
-	    // normalize to parcel-level probabilities
-	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
-	        float memsum=0.0f;
-	        for (int n=0;n<nseg;n++)  {
-	            memsum += parcelmem[xyzs][n];
-	        }
-	        if (memsum>0) {
-	            for (int n=0;n<nseg;n++)  {
-	                parcelmem[xyzs][n] /= memsum;
-	            }
-	        }
-	    }*/
-	    // add remaining proba to all for non-zero values everywhere
+	    // normalize to 1: what is important here is the homogeneity of the parcellations
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
 	        float sum=0.0f;
-	        for (int n=0;n<nseg;n++) sum+= parcelmem[xyzs][n];
-	        if (sum<1.0f) {
-	            for (int n=0;n<nseg;n++) parcelmem[xyzs][n] += (1.0f-sum)/nseg;
-	        } else {
-	            System.out.print("1");
+	        for (int n=0;n<nseg;n++) sum += parcelmem[xyzs][n];
+	        if (sum>0) {
+	            for (int n=0;n<nseg;n++) parcelmem[xyzs][n] /= sum;
 	        }
 	    }
-         
+	             
 	    // run the propagation across neighbors (iterative)
 	    float wngb = 0.5f;
 	    float[][] newmem = new float[nsxyz][nseg];
@@ -857,60 +861,23 @@ public class SuperVoxelSegmentation {
                 if (t==0) for (int n=0;n<nseg;n++) {
                     newmem[xyzs][n] = parcelmem[xyzs][n];
                 }
-                /* why not all?
-                // only use the most similar neighbor (lowest boundary score)
-                int bestngb=-1;
-                if (ngblist[xyzs].length>0) {
-                    float bestproba = 1.0f;
-                    for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) {
-                        if (bdproba[xyzs][ngb]>0 && bdproba[xyzs][ngb]<bestproba) {
-                            bestngb = ngb;
-                            bestproba = bdproba[xyzs][ngb];
-                        }
-                    }
-                }
-                if (bestngb>-1) {
-                    // swap probabilities if and only if neighbor is improved
-                    double maxmem = 0.0;
-                    double maxngb = 0.0;
-                    for (int n=0;n<nseg;n++) {
-                        if (parcelmem[xyzs][n]>maxmem) maxmem = parcelmem[xyzs][n];
-                        double ngbmem = FastMath.sqrt((1.0-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n]);
-                        if (ngbmem>maxngb) maxngb = ngbmem;
-                    }
-                    if (maxngb>maxmem) {
-                        float sum=0.0f;
-                        for (int n=0;n<nseg;n++) {
-                            //newmem[xyzs][n] = (float)FastMath.sqrt((1.0-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n]);
-                            // if we normalize to 1, the boundary factor disappears (same for all classes)
-                            //newmem[xyzs][n] = parcelmem[ngblist[xyzs][bestngb]-1][n];
-                            newmem[xyzs][n] = parcelmem[xyzs][n] + (float)FastMath.sqrt((1.0-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n]);
-                            sum += newmem[xyzs][n];
-                            // take a weighted average to avoid oscillations? doesn't seem to help much
-                            //newmem[xyzs][n] = (parcelmem[xyzs][n] + (1.0f-bdproba[xyzs][bestngb])*parcelmem[ngblist[xyzs][bestngb]-1][n])
-                            //                    /(1.0f+(1.0f-bdproba[xyzs][bestngb]));
-                            
-                        }
-                        if (sum>0) for (int n=0;n<nseg;n++) newmem[xyzs][n] /= sum;
-                    }
-                }
-                */
-                // for all neighbors, update if higher/lower
+                // for all neighbors and classes, update if neighbor higher/lower 
+                int[] count = new int[nseg];
                 for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) {
-                    // work class by class, normalization will affect the rest
                     for (int n=0;n<nseg;n++) {
                         double ngbsame = FastMath.sqrt((1.0-bdproba[xyzs][ngb])*parcelmem[ngblist[xyzs][ngb]-1][n]);
-                        double ngbdiff = FastMath.sqrt(bdproba[xyzs][ngb]*parcelmem[ngblist[xyzs][ngb]-1][n]);
                         if (ngbsame>parcelmem[xyzs][n]) {
-                            newmem[xyzs][n] = (1.0f+((float)ngbsame-parcelmem[xyzs][n]))*parcelmem[xyzs][n];
-                        } else if (ngbdiff>parcelmem[xyzs][n]) {
-                            newmem[xyzs][n] = (1.0f-((float)ngbdiff-parcelmem[xyzs][n]))*parcelmem[xyzs][n];
+                            newmem[xyzs][n] += (float)ngbsame;
+                            count[n]++;
+                        }
+                        double ngbdiff = FastMath.sqrt(bdproba[xyzs][ngb]*parcelmem[ngblist[xyzs][ngb]-1][n]);
+                        if (ngbdiff>parcelmem[xyzs][n]) {
+                            newmem[xyzs][n] += (float)(parcelmem[xyzs][n]*parcelmem[xyzs][n]/ngbdiff);
+                            count[n]++;
                         }
                     }
                 }
-                float sum=0.0f;
-                for (int n=0;n<nseg;n++) sum+= newmem[xyzs][n];
-                if (sum>0) for (int n=0;n<nseg;n++) newmem[xyzs][n] /= sum;
+                for (int n=0;n<nseg;n++) newmem[xyzs][n] /= (1.0f+count[n]);
 	        }
             diff = 0.0f;
             for (int xyzs=0;xyzs<nsxyz;xyzs++) {
