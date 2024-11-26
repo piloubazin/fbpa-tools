@@ -19,7 +19,8 @@ public class SuperVoxelSegmentation {
 	private int[] maskImage=null;
 	
 	private int[] initsegImage=null;
-	private float[] priorImage=null;
+	private float[][] priorImage=null;
+	private int nprior=0;
 	
 	private int nx, ny, nz, nxyz;
 	private float rx, ry, rz;
@@ -72,8 +73,19 @@ public class SuperVoxelSegmentation {
 	public final void setMaskImage(int[] val) { maskImage = val; }
 
 	public final void setPriorSegmentationImage(int[] val) { initsegImage = val; }
-	public final void setMaxPriorImage(float[] val) { priorImage = val; }
-
+	public final void setMaxPriorImage(float[] val) { 
+	    nprior=1;
+	    priorImage = new float[nprior][];
+	    priorImage[0] = val; 
+	}
+	public final void setPriorSegmentationNumber(int val) { 
+	    nprior = val;
+	    priorImage = new float[nprior][];
+	}
+	public final void setPriorImageAt(int id, float[] val) {
+	    priorImage[id] = val;
+	}
+	    
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
 	
@@ -816,8 +828,18 @@ public class SuperVoxelSegmentation {
         }
         
         // need the number of possible classes
-        int[] lbseg = ObjectLabeling.listLabels(initsegImage, nx, ny, nz);
+        if (initsegImage==null) {
+            // build a segmentation iamge from priors
+            initsegImage = new int[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                int best=0;
+                for (int n=1;n<nprior;n++) if (priorImage[n][xyz]>priorImage[best][xyz]) best=n;
+                if (priorImage[best][xyz]>0) initsegImage[xyz] = best+1;
+            }    
+        }
+        int[] lbseg = ObjectLabeling.listNonzeroLabels(initsegImage, nx, ny, nz);
         int nseg = lbseg.length;
+        
 	    float[][] parcelmem = new float[nsxyz][nseg];
 	    //int[] parcelseg = new int[nsxyz];
         
@@ -832,9 +854,15 @@ public class SuperVoxelSegmentation {
 	        }
 	        if (seg>-1) {
 	            // note: here we use the same weighting function that makes border regions less impactful, maybe not wise?
-                parcelmem[label-1][seg] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*priorImage[xyz];
+	            if (nprior==1)
+                    parcelmem[label-1][seg] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*priorImage[0][xyz];
+                else
+                    parcelmem[label-1][seg] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*priorImage[seg][xyz];
             }
 	    }
+	    initsegImage = null;
+	    priorImage = null;
+	    
 	    // average over ROI
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
 	        if (incount[xyzs]>0) {

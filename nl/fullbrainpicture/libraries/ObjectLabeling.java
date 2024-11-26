@@ -361,6 +361,32 @@ public class ObjectLabeling {
 		
         return list;
     }
+    public static final int[] listNonzeroLabels(int[] label, int nx, int ny, int nz) {
+        int x,y,z,n;
+        int Nlb;
+        ArrayList<Integer> lb = new ArrayList();
+        boolean newLabel;
+        
+        //lb.add(0,0);
+        Nlb = 0;
+        int ind = -1;
+        for (x=0;x<nx;x++) for (y=0;y<ny;y++) for (z=0;z<nz;z++) {
+        	ind = x + y*nx + z*nx*ny;
+        	if (label[ind]!=0) {
+                newLabel=true;
+                for (n=0;n<Nlb;n++)
+                    if (label[ind]==lb.get(n)) { newLabel=false; break; }
+                if (newLabel) {
+                    lb.add(Nlb,label[ind]);
+                    Nlb++;
+                }
+            }
+        }
+		int[] list = new int[Nlb];
+		for (n=0;n<Nlb;n++) list[n] = lb.get(n);
+		
+        return list;
+    }
     public static final float[] listOrderedLabels(float[][][] label, int nx, int ny, int nz) {
         int x,y,z,n;
         int Nlb;
