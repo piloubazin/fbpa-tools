@@ -840,6 +840,42 @@ public class SuperVoxelSegmentation {
         int[] lbseg = ObjectLabeling.listNonzeroLabels(initsegImage, nx, ny, nz);
         int nseg = lbseg.length;
         
+        /* not useful
+        // global stats for intensity priors
+        float[] meanseg = new float[nseg];
+        float[] sumseg = new float[nseg];
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+            int seg=-1;
+	        for (int n=0;n<nseg;n++) if (lbseg[n]==initsegImage[xyz]) {
+	            seg=n;
+	            n=nseg;
+	        }
+	        if (seg>-1) {
+	            meanseg[seg] += inputImage[xyz];
+	            sumseg[seg]++;
+	        }
+        }
+        for (int n=0;n<nseg;n++) if (sumseg[n]>0) meanseg[n] /= sumseg[n];
+
+        float[] varseg = new float[nseg];
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+            int seg=-1;
+	        for (int n=0;n<nseg;n++) if (lbseg[n]==initsegImage[xyz]) {
+	            seg=n;
+	            n=nseg;
+	        }
+	        if (seg>-1) {
+	            varseg[seg] += (inputImage[xyz]-meanseg[seg])*(inputImage[xyz]-meanseg[seg]);
+	        }
+        }
+        for (int n=0;n<nseg;n++) if (sumseg[n]>0) varseg[n] /= sumseg[n];
+        
+        float varmax = 0.0f;
+        for (int n=0;n<nseg;n++) {
+        //    System.out.println("class "+lbseg[n]+": "+meanseg[n]+" +/- "+FastMath.sqrt(varseg[n]));
+            if (varseg[n]>varmax) varmax = varseg[n];
+        }*/
+        
 	    float[][] parcelmem = new float[nsxyz][nseg];
 	    //int[] parcelseg = new int[nsxyz];
         
@@ -871,14 +907,29 @@ public class SuperVoxelSegmentation {
 	            }
 	        }
 	    }
-	    // normalize to 1: what is important here is the homogeneity of the parcellations
+	    /*
+	    // normalize to 1: what is important here is the homogeneity of the parcellations?
+	    // seems to work marginally better without now
 	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
 	        float sum=0.0f;
 	        for (int n=0;n<nseg;n++) sum += parcelmem[xyzs][n];
 	        if (sum>0) {
 	            for (int n=0;n<nseg;n++) parcelmem[xyzs][n] /= sum;
 	        }
+	    }*/
+	    /* not needed
+	    // intensity average per supervoxel, same calculation
+	    float[] parcelimg = new float[nsxyz];
+	    
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        parcelimg[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*inputImage[xyz];
+ 	    }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) parcelimg[xyzs] /= incount[xyzs];
 	    }
+	    */
 	             
 	    // run the propagation across neighbors (iterative)
 	    float wngb = 0.5f;
@@ -890,22 +941,39 @@ public class SuperVoxelSegmentation {
                     newmem[xyzs][n] = parcelmem[xyzs][n];
                 }
                 // for all neighbors and classes, update if neighbor higher/lower 
-                int[] count = new int[nseg];
-                for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) {
+                //double[] count = new double[nseg];
+                for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) if (bdproba[xyzs][ngb]>0) {
+                    // check only the most likely neighbor
+                    float best=0.0f;
+                    int nbest=-1;
                     for (int n=0;n<nseg;n++) {
-                        double ngbsame = FastMath.sqrt((1.0-bdproba[xyzs][ngb])*parcelmem[ngblist[xyzs][ngb]-1][n]);
-                        if (ngbsame>parcelmem[xyzs][n]) {
-                            newmem[xyzs][n] += (float)ngbsame;
-                            count[n]++;
-                        }
-                        double ngbdiff = FastMath.sqrt(bdproba[xyzs][ngb]*parcelmem[ngblist[xyzs][ngb]-1][n]);
-                        if (ngbdiff>parcelmem[xyzs][n]) {
-                            newmem[xyzs][n] += (float)(parcelmem[xyzs][n]*parcelmem[xyzs][n]/ngbdiff);
-                            count[n]++;
+                        if (parcelmem[ngblist[xyzs][ngb]-1][n]>best) {
+                            best = parcelmem[ngblist[xyzs][ngb]-1][n];
+                            nbest = n;
                         }
                     }
+                    if (nbest>-1) {
+                        double count = 1.0;
+                        double ngbsame = FastMath.sqrt((1.0-bdproba[xyzs][ngb])*parcelmem[ngblist[xyzs][ngb]-1][nbest]);
+                        if (ngbsame>parcelmem[xyzs][nbest]) {
+                            newmem[xyzs][nbest] += (float)(ngbsame);
+                            count += 1.0;
+                        }
+                        double ngbdiff = FastMath.sqrt(bdproba[xyzs][ngb]*parcelmem[ngblist[xyzs][ngb]-1][nbest]);
+                        if (ngbdiff>parcelmem[xyzs][nbest]) {
+                            newmem[xyzs][nbest] += (float)(parcelmem[xyzs][nbest]*parcelmem[xyzs][nbest]/ngbdiff);
+                            count += 1.0;
+                        }
+                        newmem[xyzs][nbest] /= (float)count;
+                    }
                 }
-                for (int n=0;n<nseg;n++) newmem[xyzs][n] /= (1.0f+count[n]);
+                //for (int n=0;n<nseg;n++) newmem[xyzs][n] /= (float)(1.0+count[n]);
+                // renormalize to 1? lower the overall probabilities 
+                /*
+                float norm=0.0f;
+                for (int n=0;n<nseg;n++) norm += newmem[xyzs][n];
+                if (norm>0) for (int n=0;n<nseg;n++) newmem[xyzs][n] /= norm;
+                */
 	        }
             diff = 0.0f;
             for (int xyzs=0;xyzs<nsxyz;xyzs++) {
@@ -921,6 +989,7 @@ public class SuperVoxelSegmentation {
 	    // export the result
 	    segImage = new int[nxyz];
 	    memsImage = new float[nxyz];
+	    /*
 	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
 	        int label = parcel[xyz];
 	        
@@ -929,14 +998,40 @@ public class SuperVoxelSegmentation {
 	        
 	        segImage[xyz] = lbseg[best];
 	        memsImage[xyz] = parcelmem[label-1][best];
-	        /* debug
-	        int ngblb = neighbor[xyz];
-	        for (int ngb=0;ngb<ngblist[label-1].length;ngb++) if (ngblb==ngblist[label-1][ngb]) {
-	            memsImage[xyz] = bdproba[label-1][ngb];
-	        }
-	        */
+	    }*/
+	    // build a new image from flat region intensities (use original estimates, not final ones)
+	    /*
+	    float[] inparcel = new float[nsxyz];
+	    float[] inseg = new float[nseg];
+	    float[] sumparcel = new float[nsxyz];
+	    float[] sumseg = new float[nseg];
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        int best=0;
+	        for (int n=1;n<nseg;n++) if (parcelmem[label-1][n]>parcelmem[label-1][best]) best=n;
+	        
+	        segImage[xyz] = best;
+	        
+	        inparcel[label-1] += inputImage[xyz];
+	        sumparcel[label-1]++;
+	        
+	        inseg[best] += inputImage[xyz];
+	        sumseg[best]++;
 	    }
-	    
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) if (sumparcel[xyzs]>0) inparcel[xyzs] /= sumparcel[xyzs];
+	    for (int n=0;n<nseg;n++) if (sumseg[n]>0) inseg[n] /= sumseg[n];
+	    */
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        int label = parcel[xyz];
+	        int best=0;
+	        for (int n=1;n<nseg;n++) if (parcelmem[label-1][n]>parcelmem[label-1][best]) best=n;
+
+	        segImage[xyz] = lbseg[best];
+	        memsImage[xyz] = parcelmem[label-1][best];
+	        //memsImage[xyz] = inputImage[xyz] - inparcel[label-1] + inseg[best];
+	        //memsImage[xyz] = inputImage[xyz] - parcelimg[label-1] + meanseg[best];
+	    }
 	    return;
 	}
 	
