@@ -837,7 +837,7 @@ public class SuperVoxelSegmentation {
                 if (priorImage[best][xyz]>0) initsegImage[xyz] = best+1;
             }    
         }
-        int[] lbseg = ObjectLabeling.listNonzeroLabels(initsegImage, nx, ny, nz);
+        int[] lbseg = ObjectLabeling.listOrderedNonzeroLabels(initsegImage, nx, ny, nz);
         int nseg = lbseg.length;
         
         /* not useful
