@@ -7,7 +7,7 @@ import nl.fullbrainpicture.libraries.*;
 import org.apache.commons.math3.util.FastMath;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 
-import java.util.HashSet;
+import java.util.*;
 
 /*
  * @author Pierre-Louis Bazin
@@ -31,6 +31,7 @@ public class SuperVoxelSegmentation {
 	private int nngb = 26;
 	private int maxiter = 10;
 	private float maxdiff = 0.01f;
+	private float threshold = 0.5f;
 
 	private float[] parcelImage;
 	private int[] segImage;
@@ -42,6 +43,7 @@ public class SuperVoxelSegmentation {
 
 	// intermediate results
 	private int[] parcel;
+	private float[] rescaled;
 	private int[] count;
 	private boolean[] mask;
 	private float[] levelset;
@@ -96,6 +98,7 @@ public class SuperVoxelSegmentation {
 	public final void setNoiseLevel(float val) { noise = val; }
 	public final void setMaxIterations(int val) { maxiter = val; }
 	public final void setMaxDifference(float val) { maxdiff = val; }
+	public final void setThreshold(float val) { threshold = val; }
 	
 	// create outputs
 	public final int[] getSegmentationImage() { return segImage; }
@@ -123,7 +126,8 @@ public class SuperVoxelSegmentation {
         growBoundaries();
         
         System.out.println("Compute posterior segmentation");
-        computeParcelSegmentation();
+        //computeParcelSegmentation();
+        computeParcelAggregation(threshold);
 	}
 	
 	public void supervoxelParcellation() {
@@ -137,7 +141,7 @@ public class SuperVoxelSegmentation {
 	    
 	    // init downscaled images
 	    parcel = new int[nxyz];
-	    float[] rescaled = new float[nsxyz];
+	    rescaled = new float[nsxyz];
 	    //memsImage = new float[nsxyz];
 	    count = new int[nsxyz];
 	    
@@ -1035,4 +1039,478 @@ public class SuperVoxelSegmentation {
 	    return;
 	}
 	
+	public void computeParcelAggregation(float maxproba) {
+	    // we assume we have the distance to the boundary and the label of the closest supervoxel
+	    // now we fit a sigmoid to intensity, distance for each boundary
+	    // the sigmoid has three parameters: height (contrast), slope (sharpness) and offset (true boundary)
+	    
+	    // we assume a probabilistic prior separation into 3 regions, with the boundary being centered
+	    // at zero and the slope being two voxels in spread
+	    // thus inside is 1-exp(-|lvl|/d0), and boundary is exp(-|lvl|/d0)
+	    
+	    float[] interior = new float[nsxyz];
+	    float[] incount = new float[nsxyz];
+	    
+	    float delta = 0.001f;
+	    float delta0 = 0.1f;
+	    float dist0 = 2.0f;
+	    //int nngb = 30;
+	    
+	    // use HashSets to count the number of needed neighbors per location
+	    HashSet[] ngbset = new HashSet[nsxyz];
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        ngbset[xyzs] = new HashSet(nngb);
+	    }
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+	        ngbset[label-1].add(ngblb);
+	    }
+	    // count the number of neighbors per region??
+	    // must build a full list...
+	    int[][] ngblist = new int[nsxyz][];
+	    float[][] bdproba = new float[nsxyz][];	    
+	    
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	         ngblist[xyzs] = new int[ngbset[xyzs].size()];
+	         bdproba[xyzs] = new float[ngbset[xyzs].size()];
+	    }
+	    
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0 && neighbor[xyz]>0) {
+	        int label = parcel[xyz];
+	        int ngblb = neighbor[xyz];
+	        
+	        boolean found=false;
+	        int last = ngblist[label-1].length;
+	        for (int n=0;n<ngblist[label-1].length;n++) {
+	            if (ngblb==ngblist[label-1][n]) {
+	                found=true;
+	                n=ngblist[label-1].length;
+	            } else if (ngblist[label-1][n]==0) {
+	                ngblist[label-1][n] = ngblb;
+	                n=ngblist[label-1].length;
+	            }
+	        }
+	    }
+	    
+	    // boundaries: use all the interior of a given region
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        interior[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*inputImage[xyz];
+	        incount[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)));
+	    }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) interior[xyzs] /= incount[xyzs];
+	    }
+	    	    
+	    // boundary SNR
+	    float[] noise = new float[nsxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        noise[label-1] += (float)(1.0-FastMath.exp(-0.5*Numerics.square(levelset[xyz]/dist0)))*Numerics.square(inputImage[xyz]-interior[label-1]);
+	    }
+	    for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+	        if (incount[xyzs]>0) noise[xyzs] = (float)FastMath.sqrt(noise[xyzs]/incount[xyzs]);
+	    }
+        // boundary probability based on Jensen-Shannon divergence
+        for (int xyzs=0;xyzs<nsxyz;xyzs++) for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) {
+            int label = xyzs+1;
+            int ngblb = ngblist[xyzs][ngb];
+            
+            // only map the boundary once
+            if (ngblb>label) {
+                if (noise[label-1]>0.0 && noise[ngblb-1]>0.0 && incount[label-1]>0 && incount[ngblb-1]>0) {
+                    double sigmaAB = (incount[label-1]*noise[label-1]*noise[label-1] + incount[ngblb-1]*noise[ngblb-1]*noise[ngblb-1]
+                                        + incount[label-1]*incount[ngblb-1]/(incount[label-1]+incount[ngblb-1])
+                                            *(interior[label-1]-interior[ngblb-1])*(interior[label-1]-interior[ngblb-1]))
+                                                /(incount[label-1]+incount[ngblb-1]);
+                    if (sigmaAB>0.0) {                                
+                        double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                        - 0.5*incount[label-1]/(incount[label-1]+incount[ngblb-1])
+                                            *FastMath.log(noise[label-1]*noise[label-1])
+                                        - 0.5*incount[ngblb-1]/(incount[label-1]+incount[ngblb-1])
+                                            *FastMath.log(noise[ngblb-1]*noise[ngblb-1]);
+                        bdproba[xyzs][ngb] = (float)Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                    }
+                }
+            }
+        }
+        // from there onward, do aggregative clustering
+        int[] cluster = new int[nsxyz];        
+        float[] clsum = new float[nsxyz];
+        float[] clvar = new float[nsxyz];
+        float[] clmin = new float[nsxyz];
+        float[] clmax = new float[nsxyz];
+        
+        // 1. Make a (large) array with all boundaries below maxproba
+        
+        // computation variables
+        BinaryHeapPair heap = new BinaryHeapPair(nsx*nsy+nsy*nsz+nsz*nsx, BinaryHeapPair.MINTREE);
+		heap.reset();
+        for (int xyzs=0;xyzs<nsxyz;xyzs++) {
+            for (int ngb=0;ngb<ngblist[xyzs].length;ngb++) if (bdproba[xyzs][ngb]>0) {
+                // add to the heap with boundary value
+                if (bdproba[xyzs][ngb]<maxproba) heap.addValue(bdproba[xyzs][ngb],xyzs,ngb);
+            }
+            // init local quantities
+            clsum[xyzs] = incount[xyzs];
+            clmin[xyzs] = interior[xyzs];
+            clmax[xyzs] = interior[xyzs];
+            clvar[xyzs] = noise[xyzs]*noise[xyzs];
+        }
+		// grow the labels and functions
+        float maxdist = 0.0f;
+        int maxcluster = 0;
+        while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float dist = heap.getFirst();
+        	int xyzs = heap.getFirstId1();
+        	int ngb = heap.getFirstId2();
+			heap.removeFirst();
+			
+			int lb1 = xyzs+1;
+			int lb2 = ngblist[xyzs][ngb];
+
+            // check if the probability has changed
+            if (bdproba[xyzs][ngb]>dist) {
+                if (bdproba[xyzs][ngb]<maxproba) heap.addValue(bdproba[xyzs][ngb],xyzs,ngb);
+                continue;
+            } else if (bdproba[xyzs][ngb]<dist) {
+                // skip if already lower and assigned
+                continue;
+            }
+            // same value: update
+            
+            // proceed case by case for the whole thing, more efficient...
+			if (cluster[lb1-1]==0 && cluster[lb2-1]==0) {
+			    // both new
+
+			    // update stats
+			    clvar[lb1-1] = Numerics.min(clvar[lb1-1],clvar[lb2-1]);
+			    clsum[lb1-1] = Numerics.max(clsum[lb1-1],clsum[lb2-1]);
+			    clmin[lb1-1] = Numerics.min(clmin[lb1-1],clmin[lb2-1]);
+                clmax[lb1-1] = Numerics.max(clmax[lb1-1],clmax[lb2-1]);
+                
+			    clvar[lb2-1] = clvar[lb1-1];
+			    clsum[lb2-1] = clsum[lb1-1];
+			    clmin[lb2-1] = clmin[lb1-1];
+			    clmax[lb2-1] = clmax[lb1-1];
+			    
+			    // update labels
+                maxcluster++;
+			    cluster[lb1-1] = maxcluster;
+			    cluster[lb2-1] = maxcluster;
+			    
+                // update local neighbors with new values
+			    for (int nb=0;nb<ngblist[lb1-1].length;nb++) if (bdproba[lb1-1][nb]>0) {
+			        int label = lb2;
+			        int ngblb = ngblist[lb1-1][nb];
+			        if (cluster[ngblb-1]!=cluster[lb1-1]) {
+                
+                        double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                        + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                        double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                        - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[label-1])
+                                        - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[ngblb-1]);
+                        double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                        
+                        // always update
+                        if (score<bdproba[lb1-1][nb] && score<maxproba) heap.addValue((float)score,lb1-1,nb);
+                        bdproba[lb1-1][nb] = (float)score;
+                    }
+                }
+			    for (int nb=0;nb<ngblist[lb2-1].length;nb++) if (bdproba[lb2-1][nb]>0) {
+			        int label = lb1;
+			        int ngblb = ngblist[lb2-1][nb];
+			        if (cluster[ngblb-1]!=cluster[lb2-1]) {
+                
+                        double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                        + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                        double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                        - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[label-1])
+                                        - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[ngblb-1]);
+                        double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                        
+                        // always update
+                        if (score<bdproba[lb2-1][nb] && score<maxproba) heap.addValue((float)score,lb2-1,nb);
+                        bdproba[lb2-1][nb] = (float)score;
+                    }
+                }
+			    
+			    System.out.print("+");
+            } else if (cluster[lb1-1]==0 && cluster[lb2-1]>0) {
+			    // first new, second already a cluster
+			    
+                // update stats
+			    clvar[lb1-1] = Numerics.min(clvar[lb1-1],clvar[lb2-1]);
+			    clsum[lb1-1] = Numerics.max(clsum[lb1-1],clsum[lb2-1]);
+			    clmin[lb1-1] = Numerics.min(clmin[lb1-1],clmin[lb2-1]);
+                clmax[lb1-1] = Numerics.max(clmax[lb1-1],clmax[lb2-1]);
+                
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb2-1]) {
+                    int lbn = loc+1;
+                    clvar[lbn-1] = clvar[lb1-1];
+                    clsum[lbn-1] = clsum[lb1-1];
+                    clmin[lbn-1] = clmin[lb1-1];
+                    clmax[lbn-1] = clmax[lb1-1];
+			    }
+
+			    // update labels
+			    cluster[lb1-1] = cluster[lb2-1];
+
+			    // update local neighbors
+			    for (int nb=0;nb<ngblist[lb1-1].length;nb++) if (bdproba[lb1-1][nb]>0) {
+			        int label = lb2;
+			        int ngblb = ngblist[lb1-1][nb];
+			        
+			        if (cluster[ngblb-1]!=cluster[lb1-1]) {
+                        double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                        + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                        double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                        - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[label-1])
+                                        - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[ngblb-1]);
+                        double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                    
+                        // always update
+                        if (score<bdproba[lb1-1][nb] && score<maxproba) heap.addValue((float)score,lb1-1,nb);
+                        bdproba[lb1-1][nb] = (float)score;
+                    }
+                }
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb2-1]) {
+			        int lbn = loc+1;
+                    for (int nb=0;nb<ngblist[lbn-1].length;nb++) if (bdproba[lbn-1][nb]>0 && cluster[ngblist[lbn-1][nb]-1]!=cluster[lb2-1]) {
+                        int label = lb1;
+                        int ngblb = ngblist[lbn-1][nb];
+                        
+                        if (cluster[ngblb-1]!=cluster[lbn-1]) {
+                            double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                            + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                           double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                            - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[label-1])
+                                            - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[ngblb-1]);
+                            double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                            
+                            // always update
+                            if (score<bdproba[lbn-1][nb] && score<maxproba) heap.addValue((float)score,lbn-1,nb);
+                            bdproba[lbn-1][nb] = (float)score;
+                        }
+                    }
+                }
+
+			    System.out.print("1");
+			} else if (cluster[lb1-1]>0 && cluster[lb2-1]==0) {
+			    // second new, first already a cluster
+			    
+                // update stats
+			    clvar[lb2-1] = Numerics.min(clvar[lb1-1],clvar[lb2-1]);
+			    clsum[lb2-1] = Numerics.max(clsum[lb1-1],clsum[lb2-1]);
+			    clmin[lb2-1] = Numerics.min(clmin[lb1-1],clmin[lb2-1]);
+                clmax[lb2-1] = Numerics.max(clmax[lb1-1],clmax[lb2-1]);
+                
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb1-1]) {
+                    int lbn = loc+1;
+                    clvar[lbn-1] = clvar[lb2-1];
+                    clsum[lbn-1] = clsum[lb2-1];
+                    clmin[lbn-1] = clmin[lb2-1];
+                    clmax[lbn-1] = clmax[lb2-1];
+			    }
+
+                // update labels
+			    cluster[lb2-1] = cluster[lb1-1];
+
+			    // update local neighbors
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb1-1]) {
+			        int lbn = loc+1;
+			        for (int nb=0;nb<ngblist[lbn-1].length;nb++) if (bdproba[lbn-1][nb]>0 && cluster[ngblist[lbn-1][nb]-1]!=cluster[lb1-1]) {
+			            int label = lb2;
+			            int ngblb = ngblist[lbn-1][nb];
+                
+                        if (cluster[ngblb-1]!=cluster[lbn-1]) {
+                            double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                            + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                            double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                            - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[label-1])
+                                            - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[ngblb-1]);
+                            double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                            
+                            // always update
+                            if (score<bdproba[lbn-1][nb] && score<maxproba) heap.addValue((float)score,lbn-1,nb);
+                            bdproba[lbn-1][nb] = (float)score;
+                        }
+                    }
+                }
+			    for (int nb=0;nb<ngblist[lb2-1].length;nb++) if (bdproba[lb2-1][nb]>0) {
+			        int label = lb1;
+			        int ngblb = ngblist[lb2-1][nb];
+			                        
+			        if (cluster[ngblb-1]!=cluster[lb2-1]) {
+                        double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                        + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                        double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                        - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[label-1])
+                                        - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *FastMath.log(clvar[ngblb-1]);
+                        double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                    
+                        // always update
+                        if (score<bdproba[lb2-1][nb] && score<maxproba) heap.addValue((float)score,lb2-1,nb);
+                        bdproba[lb2-1][nb] = (float)score;
+                    }
+                }
+
+			    System.out.print("2");
+			} else if (cluster[lb1-1]>0 && cluster[lb2-1]>0) {
+			    // none new, both clusters
+			    
+                // update stats
+			    clvar[lb1-1] = Numerics.min(clvar[lb1-1],clvar[lb2-1]);
+			    clsum[lb1-1] = Numerics.max(clsum[lb1-1],clsum[lb2-1]);
+			    clmin[lb1-1] = Numerics.min(clmin[lb1-1],clmin[lb2-1]);
+                clmax[lb1-1] = Numerics.max(clmax[lb1-1],clmax[lb2-1]);
+                
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb1-1]) {
+                    int lbn = loc+1;
+                    clvar[lbn-1] = clvar[lb1-1];
+                    clsum[lbn-1] = clsum[lb1-1];
+                    clmin[lbn-1] = clmin[lb1-1];
+                    clmax[lbn-1] = clmax[lb1-1];
+			    }
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb2-1]) {
+                    int lbn = loc+1;
+                    clvar[lbn-1] = clvar[lb1-1];
+                    clsum[lbn-1] = clsum[lb1-1];
+                    clmin[lbn-1] = clmin[lb1-1];
+                    clmax[lbn-1] = clmax[lb1-1];
+			    }
+                
+			    // update labels
+                if (cluster[lb1-1]<cluster[lb2-1]) {
+                    for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb2-1]) {
+			            int lbn = loc+1;
+                        cluster[lbn-1] = cluster[lb1-1];
+                    }
+                } else {
+                    for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb1-1]) {
+			            int lbn = loc+1;
+                        cluster[lbn-1] = cluster[lb2-1];
+                    }
+                }
+
+			    // update local neighbors
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb1-1]) {
+			        int lbn = loc+1;
+			        for (int nb=0;nb<ngblist[lbn-1].length;nb++) if (bdproba[lbn-1][nb]>0 && cluster[ngblist[lbn-1][nb]-1]!=cluster[lb1-1]) {
+			            int label = lb2;
+			            int ngblb = ngblist[lbn-1][nb];
+                
+                        if (cluster[ngblb-1]!=cluster[lbn-1]) {
+                            double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                        + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                            double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                            - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[label-1])
+                                            - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[ngblb-1]);
+                            double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                            
+                            // always update
+                            if (score<bdproba[lbn-1][nb] && score<maxproba) heap.addValue((float)score,lbn-1,nb);
+                            bdproba[lbn-1][nb] = (float)score;
+                        }
+                    }
+                }
+                for (int loc=0;loc<nsxyz;loc++) if (cluster[loc]==cluster[lb2-1]) {
+			        int lbn = loc+1;
+			        for (int nb=0;nb<ngblist[lbn-1].length;nb++) if (bdproba[lbn-1][nb]>0 && cluster[ngblist[lbn-1][nb]-1]!=cluster[lb2-1]) {
+			            int label = lb1;
+			            int ngblb = ngblist[lbn-1][nb];
+                
+                        if (cluster[ngblb-1]!=cluster[lbn-1]) {
+                            double sigmaAB = (clsum[label-1]*clvar[label-1] + clsum[ngblb-1]*clvar[ngblb-1]
+                                        + clsum[label-1]*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                            *Numerics.max((clmin[label-1]-clmax[ngblb-1])*(clmin[label-1]-clmax[ngblb-1]),
+                                                          (clmax[label-1]-clmin[ngblb-1])*(clmax[label-1]-clmin[ngblb-1])))
+                                                /(clsum[label-1]+clsum[ngblb-1]);
+                            double jsdiv = 0.5*FastMath.log(sigmaAB) 
+                                            - 0.5*clsum[label-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[label-1])
+                                            - 0.5*clsum[ngblb-1]/(clsum[label-1]+clsum[ngblb-1])
+                                                *FastMath.log(clvar[ngblb-1]);
+                            double score = Numerics.min(1.0,FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0));
+                            
+                            // always update
+                            if (score<bdproba[lbn-1][nb] && score<maxproba) heap.addValue((float)score,lbn-1,nb);
+                            bdproba[lbn-1][nb] = (float)score;
+                        }
+                    }
+                }
+                
+			    System.out.print("-");
+			}
+			
+		}
+		
+		float[] meanc = new float[maxcluster];
+		float[] sumc = new float[maxcluster];
+		for (int xyzs=0;xyzs<nsxyz;xyzs++) if (cluster[xyzs]>0) {
+		    meanc[cluster[xyzs]-1] += rescaled[xyzs];
+		    sumc[cluster[xyzs]-1]++;
+		}
+		for (int c=0;c<maxcluster;c++) if (sumc[c]>0) meanc[c] /= sumc[c];
+		
+		// output cluster map
+	    segImage = new int[nxyz];
+	    memsImage = new float[nxyz];
+		for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        int label = parcel[xyz];
+	        
+	        segImage[xyz] = cluster[label-1];
+	        if (cluster[label-1]>0) {
+	            memsImage[xyz] = meanc[cluster[label-1]-1];
+	        } else {
+	            memsImage[xyz] = rescaled[label-1];
+	        }
+	    }
+	    
+	    // TODO: use the clustering to update the input segmentation
+	    
+	    
+	    return;
+	}
+
 }

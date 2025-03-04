@@ -285,6 +285,8 @@ public class SpectralMeshEmbedding {
             // (not always true!)
             linker[n][m] = 0.5*(distmtx[n][m]+distmtxRef[n][m]);
             linker[m][n] = linker[n][m];
+            
+            // TO TEST: use sqrt(W1*W2) (i.e. geometric mean / dot product)??
         }
         
         double[][] matrix = new double[2*msize][2*msize];
