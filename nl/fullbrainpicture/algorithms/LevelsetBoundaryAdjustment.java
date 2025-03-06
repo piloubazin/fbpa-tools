@@ -135,8 +135,6 @@ public class LevelsetBoundaryAdjustment {
                         || (contrastType==DECREASING && exterior<interior)
                         || (contrastType==BOTH) ) {
                     
-                        System.out.print(".");
-                    
                         // offset
                         float offset = 0.0f;
                         float offcount = 0.0f;
@@ -154,8 +152,6 @@ public class LevelsetBoundaryAdjustment {
                         if (offcount>0) {
                             offset /= offcount;
                         
-                            System.out.print("o");
-                            
                             // propagate the offset over the levelset values, with weights
                             for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
                                 int dxyz = dx+nx*dy+nx*ny*dz;
