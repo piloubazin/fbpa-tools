@@ -24,7 +24,10 @@ public class LevelsetBoundaryAdjustment {
 	
 	private float distance;
 	private float spread;
-	private String contrastType;
+	private byte contrastType;
+	private static final	byte	INCREASING = 1;
+	private static final	byte	DECREASING = -1;
+	private static final	byte	BOTH = 0;
 	
 	private float[] probaImage;
 	
@@ -60,7 +63,11 @@ public class LevelsetBoundaryAdjustment {
 			
 	public final void setBoundaryDistance(float val) { distance = val; }
 	public final void setLocalSpread(float val) { spread = val; }
-	public final void setContrastType(String val) { contrastType = val; }
+	public final void setContrastType(String val) {
+	    if (val.equals("increasing")) contrastType = INCREASING;
+	    else if (val.equals("decreasing")) contrastType = DECREASING;
+	    else contrastType = BOTH;; 
+	}
 	
 	// create outputs
 	public final float[] getLevelsetImage() { return levelsetImage; }
@@ -95,9 +102,11 @@ public class LevelsetBoundaryAdjustment {
 
 	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 	        int xyz = x+nx*y+nx*ny*z;
-	        if (mask[xyz] && Numerics.abs(levelsetImage[xyz])<spread) {
-	            System.out.print(".");
 	        
+	        newlevel[xyz] = levelsetImage[xyz];
+	        
+	        if (mask[xyz] && Numerics.abs(levelsetImage[xyz])<spread) {
+	            
 	            // grow region
 	            float interior = 0.0f;
 	            float incount = 0.0f;
@@ -121,11 +130,12 @@ public class LevelsetBoundaryAdjustment {
                     interior /= incount;
                     exterior /= excount;
                     
-                    System.out.print("-");
-	            
                     // only take into account correct contrast values
-                    if ( (contrastType=="increasing" && exterior>interior) 
-                        || (contrastType=="decreasing" && exterior<interior) ) {
+                    if ( (contrastType==INCREASING && exterior>interior) 
+                        || (contrastType==DECREASING && exterior<interior)
+                        || (contrastType==BOTH) ) {
+                    
+                        System.out.print(".");
                     
                         // offset
                         float offset = 0.0f;
@@ -158,8 +168,6 @@ public class LevelsetBoundaryAdjustment {
                         }
                     }
                 }
-            } else {
-                newlevel[xyz] = levelsetImage[xyz];
             }
         }
         for (int xyz=0;xyz<nxyz;xyz++) if (newcount[xyz]>0) {
