@@ -96,6 +96,7 @@ public class LevelsetBoundaryAdjustment {
 	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
 	        int xyz = x+nx*y+nx*ny*z;
 	        if (mask[xyz] && Numerics.abs(levelsetImage[xyz])<spread) {
+	            System.out.print(".");
 	        
 	            // grow region
 	            float interior = 0.0f;
@@ -119,6 +120,8 @@ public class LevelsetBoundaryAdjustment {
                 if (incount>0 && excount>0) {
                     interior /= incount;
                     exterior /= excount;
+                    
+                    System.out.print("-");
 	            
                     // only take into account correct contrast values
                     if ( (contrastType=="increasing" && exterior>interior) 
@@ -141,6 +144,8 @@ public class LevelsetBoundaryAdjustment {
                         if (offcount>0) {
                             offset /= offcount;
                         
+                            System.out.print("o");
+                            
                             // propagate the offset over the levelset values, with weights
                             for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
                                 int dxyz = dx+nx*dy+nx*ny*dz;
@@ -153,6 +158,8 @@ public class LevelsetBoundaryAdjustment {
                         }
                     }
                 }
+            } else {
+                newlevel[xyz] = levelsetImage[xyz];
             }
         }
         for (int xyz=0;xyz<nxyz;xyz++) if (newcount[xyz]>0) {
