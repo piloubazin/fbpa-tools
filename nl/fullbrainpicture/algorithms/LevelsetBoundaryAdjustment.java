@@ -153,14 +153,16 @@ public class LevelsetBoundaryAdjustment {
                             offset /= offcount;
                         
                             // propagate the offset over the levelset values, with weights
+                            /* maybe too smooth that way?
                             for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
                                 int dxyz = dx+nx*dy+nx*ny*dz;
                                 if (mask[dxyz]) {
                                     float wsample = Numerics.bounded( 1.0f - ((dx-x)*(dx-x) + (dy-y)*(dy-y) +(dz-z)*(dz-z))/(distance*distance), 0.0f, 1.0f);
-                                    newlevel[dxyz] += wsample*(levelsetImage[dxyz]+offset);
+                                    newlevel[dxyz] += wsample*(levelsetImage[dxyz]-offset);
                                     newcount[dxyz] += wsample;
                                 }
-                            }
+                            }*/
+                            newlevel[xyz] = levelsetImage[xyz]-offset;
                         }
                     }
                 }
@@ -169,10 +171,20 @@ public class LevelsetBoundaryAdjustment {
         for (int xyz=0;xyz<nxyz;xyz++) if (newcount[xyz]>0) {
             newlevel[xyz] /= newcount[xyz];
         }
-        
-        levelsetImage = newlevel;
-        probaImage = newcount;
-        
+        float[] output = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            if (levelsetImage[xyz]<0 && newlevel[xyz]<0) output[xyz] = 2.0f;
+            if (levelsetImage[xyz]<0 && newlevel[xyz]>0) output[xyz] = 1.0f;
+            if (levelsetImage[xyz]>0 && newlevel[xyz]<0) output[xyz] = 3.0f;
+            if (levelsetImage[xyz]>0 && newlevel[xyz]>0) output[xyz] = 0.0f;
+        }
+        levelsetImage = output;
+        //levelsetImage = newlevel;
+        //probaImage = newcount;
+        probaImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            probaImage[xyz] = levelsetImage[xyz]-newlevel[xyz];
+        }
 	    return;
 	}
 
