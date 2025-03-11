@@ -28,6 +28,9 @@ public class LevelsetBoundaryAdjustment {
 	private static final	byte	INCREASING = 1;
 	private static final	byte	DECREASING = -1;
 	private static final	byte	BOTH = 0;
+	private int iterations=1;
+	private String lutdir=null;
+	private String connectivity="no";
 	
 	private float[] probaImage;
 	
@@ -68,6 +71,9 @@ public class LevelsetBoundaryAdjustment {
 	    else if (val.equals("decreasing")) contrastType = DECREASING;
 	    else contrastType = BOTH;; 
 	}
+	public final void setIterations(int val) { iterations = val; }
+	public final void setConnectivity(String val) { connectivity = val; }
+	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
 	
 	// create outputs
 	public final float[] getLevelsetImage() { return levelsetImage; }
@@ -84,15 +90,35 @@ public class LevelsetBoundaryAdjustment {
 		}
 		maskImage = null;
 	    
-		fitBasicBoundarySigmoid();
+        float[] output = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            if (levelsetImage[xyz]<0) output[xyz] = 1.0f;
+            else output[xyz] = 0.0f;
+        }
+        
+        for (int t=0;t<iterations;t++) {
+		    float[] newlevel = fitBasicBoundarySigmoid();
+		    
+		    adjustLevelset(newlevel);
+		}
+		
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            if (levelsetImage[xyz]<0) output[xyz] += 2.0f;
+        }
+        
+        probaImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            probaImage[xyz] = Numerics.bounded(levelsetImage[xyz],-distance, distance);
+        }
+        
+        levelsetImage = output;
+	    return;
 	}
 	
-	public void fitBasicBoundarySigmoid() {
+	public float[] fitBasicBoundarySigmoid() {
 
 	    float delta = 0.001f;
-	    float delta0 = 0.1f;
 	    float dist0 = 2.0f;
-	    //int nngb = 30;
 	    
 	    int dist = Numerics.ceil(distance);
 	    
@@ -115,38 +141,75 @@ public class LevelsetBoundaryAdjustment {
 	            for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
 	                int dxyz = dx+nx*dy+nx*ny*dz;
 	                if (mask[dxyz]) {
-	                    float win = - Numerics.bounded(levelsetImage[dxyz]/dist0, -1.0f, 1.0f);
-	                    if (win>0) {
-                            interior += win*win*contrastImage[dxyz];
-                            incount += win*win;
-                        } else {
-                            exterior += win*win*contrastImage[dxyz];
-                            excount += win*win;
-                        }
+	                    if ( (levelsetImage[dxyz]>levelsetImage[xyz] && contrastImage[dxyz]>contrastImage[xyz])
+	                        || (levelsetImage[dxyz]<=levelsetImage[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) {
+                            float win = - Numerics.bounded(levelsetImage[dxyz]/dist0, -1.0f, 1.0f);
+                            if (win<0) {
+                                exterior += win*win*contrastImage[dxyz];
+                                excount += win*win;
+                            }
+                            if (win>0) {
+                                interior += win*win*contrastImage[dxyz];
+                                incount += win*win;
+                            }
+                        } 
                     }
                 }
                 // skip if one is empty
                 if (incount>0 && excount>0) {
                     interior /= incount;
                     exterior /= excount;
+                    /* not needed
+                    // estimate stdev to deal with different variance within region
+                    float indev = 0.0f;
+                    float exdev = 0.0f;
+                    for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                        int dxyz = dx+nx*dy+nx*ny*dz;
+                        if (mask[dxyz]) {
+                            if ( (levelsetImage[dxyz]>levelsetImage[xyz] && contrastImage[dxyz]>contrastImage[xyz])
+                                || (levelsetImage[dxyz]<=levelsetImage[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) {
+                                float win = - Numerics.bounded(levelsetImage[dxyz]/dist0, -1.0f, 1.0f);
+                                if (win<0) {
+                                    exdev += win*win*(contrastImage[dxyz]-exterior)*(contrastImage[dxyz]-exterior);
+                                }
+                                if (win>0) {
+                                    indev += win*win*(contrastImage[dxyz]-interior)*(contrastImage[dxyz]-interior);
+                                    incount += win*win;
+                                }
+                            } 
+                        }
+                    }
+                    indev = (float)FastMath.sqrt(indev/incount);
+                    exdev = (float)FastMath.sqrt(exdev/excount);
+                    */
                     
                     // only take into account correct contrast values
                     if ( (contrastType==INCREASING && exterior>interior) 
                         || (contrastType==DECREASING && exterior<interior)
                         || (contrastType==BOTH) ) {
                     
+                        /*
                         // offset
                         float offset = 0.0f;
                         float offcount = 0.0f;
                         for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
                             int dxyz = dx+nx*dy+nx*ny*dz;
                             if (mask[dxyz]) {
-                                float wgty = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta)
-                                            *Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
-                                float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelsetImage[dxyz]/dist0)), delta, 1.0f-delta);
-                
-                                offset += levelsetImage[dxyz]*wgtx*wgty;
-                                offcount += wgtx*wgty;
+                                if (levelsetImage[dxyz]>levelsetImage[xyz] && contrastImage[dxyz]>contrastImage[xyz]) {
+                                    float wgty = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta)
+                                                *Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
+                                    float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelsetImage[dxyz]/dist0)), delta, 1.0f-delta);
+                    
+                                    offset += levelsetImage[dxyz]*wgtx*wgty;
+                                    offcount += wgtx*wgty;
+                                } else if (levelsetImage[dxyz]<=levelsetImage[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) {
+                                    float wgty = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta)
+                                                *Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
+                                    float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelsetImage[dxyz]/dist0)), delta, 1.0f-delta);
+                    
+                                    offset += levelsetImage[dxyz]*wgtx*wgty;
+                                    offcount += wgtx*wgty;
+                                }
                             }
                         }
                         if (offcount>0) {
@@ -161,31 +224,121 @@ public class LevelsetBoundaryAdjustment {
                                     newlevel[dxyz] += wsample*(levelsetImage[dxyz]-offset);
                                     newcount[dxyz] += wsample;
                                 }
-                            }*/
+                            }*//*
                             newlevel[xyz] = levelsetImage[xyz]-offset;
                         }
+                        */
+                        // fit slope and offset together? seems unstable, bad starting point makes errors
+                        /*
+                        float avgphi=0.0f;
+                        float avgimg=0.0f;
+                        float avgnum=0.0f;
+                        for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                            int dxyz = dx+nx*dy+nx*ny*dz;
+                            if (mask[dxyz]) {
+                                if ( (levelsetImage[dxyz]>levelsetImage[xyz] && contrastImage[dxyz]>contrastImage[xyz])
+                                    || (levelsetImage[dxyz]<=levelsetImage[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) {
+                                    float wgty = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta)
+                                                *Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
+                                    float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelsetImage[dxyz]/dist0)), delta, 1.0f-delta);
+                    
+                                    avgphi += wgtx*wgty*levelsetImage[dxyz];
+                                    avgimg += wgtx*wgty*contrastImage[dxyz];
+                                    avgnum += wgtx*wgty;
+                                } 
+                            }
+                        }
+                        if (avgnum>0) {
+                            avgphi /=avgnum;
+                            avgimg /= avgnum;
+                        }
+                        float slope=0.0f;
+                        float slden=0.0f;
+                        for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                            int dxyz = dx+nx*dy+nx*ny*dz;
+                            if (mask[dxyz]) {
+                                if ( (levelsetImage[dxyz]>levelsetImage[xyz] && contrastImage[dxyz]>contrastImage[xyz])
+                                    || (levelsetImage[dxyz]<=levelsetImage[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) {
+                                    float wgty = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta)
+                                                *Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
+                                    float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelsetImage[dxyz]/dist0)), delta, 1.0f-delta);
+                    
+                                    slope += wgtx*wgty*(levelsetImage[dxyz]-avgphi)*(contrastImage[dxyz]-avgimg);
+                                    slden += wgtx*wgty*(levelsetImage[dxyz]-avgphi)*(levelsetImage[dxyz]-avgphi);
+                                } 
+                            }
+                        }
+                        if (slden>0) {
+                            slope /= slden;
+                        }
+                        float offset = 0.0f;
+                        if (slope!=0) {
+                            offset = avgimg/slope - avgphi;
+                        }
+                        newlevel[xyz] = levelsetImage[xyz]+offset;
+                        */
+                        // offset as the location where probability in/out transition?
+                        float inbound = 0.0f;
+                        float exbound = 0.0f;
+                        incount = 0.0f;
+                        excount = 0.0f;
+                        float bdcount = 0.0f;
+                        for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                            int dxyz = dx+nx*dy+nx*ny*dz;
+                            if (mask[dxyz]) {
+                                if ( (levelsetImage[dxyz]>levelsetImage[xyz] && contrastImage[dxyz]>contrastImage[xyz]) 
+                                    || (levelsetImage[dxyz]<=levelsetImage[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) {
+                                    float wgtin = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta);
+                                    float wgtex = Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
+                                    
+                                    float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(levelsetImage[dxyz]/dist0)), delta, 1.0f-delta);
+                    
+                                    inbound += levelsetImage[dxyz]*wgtx*wgtin;
+                                    incount += wgtx*wgtin;
+                    
+                                    exbound += levelsetImage[dxyz]*wgtx*wgtex;
+                                    excount += wgtx*wgtex;
+                                    
+                                    bdcount += wgtx;
+                                }
+                            }
+                        }
+                        // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
+                        if (bdcount>0) {
+                            float offset = 0.5f*(inbound/bdcount + exbound/bdcount)/(incount/bdcount + excount/bdcount);
+                            newlevel[xyz] = levelsetImage[xyz]-offset;
+                        }
+                        /* best so far
+                        if (incount>0 && excount>0) {
+                            float offset = 0.5f*(exdev*inbound/incount + indev*exbound/excount)/(exdev+indev);
+                            newlevel[xyz] = levelsetImage[xyz]-offset;
+                        }*/
+                        /* grows systematically
+                        if (incount+excount>0) {
+                            float offset = 0.5f*(inbound + exbound)/(incount + exbound);
+                            newlevel[xyz] = levelsetImage[xyz]-offset;
+                        }*/
                     }
                 }
             }
         }
+        /*
         for (int xyz=0;xyz<nxyz;xyz++) if (newcount[xyz]>0) {
             newlevel[xyz] /= newcount[xyz];
-        }
-        float[] output = new float[nxyz];
-        for (int xyz=0;xyz<nxyz;xyz++) {
-            if (levelsetImage[xyz]<0 && newlevel[xyz]<0) output[xyz] = 2.0f;
-            if (levelsetImage[xyz]<0 && newlevel[xyz]>0) output[xyz] = 1.0f;
-            if (levelsetImage[xyz]>0 && newlevel[xyz]<0) output[xyz] = 3.0f;
-            if (levelsetImage[xyz]>0 && newlevel[xyz]>0) output[xyz] = 0.0f;
-        }
-        levelsetImage = output;
-        //levelsetImage = newlevel;
-        //probaImage = newcount;
-        probaImage = new float[nxyz];
-        for (int xyz=0;xyz<nxyz;xyz++) {
-            probaImage[xyz] = levelsetImage[xyz]-newlevel[xyz];
-        }
-	    return;
-	}
+        }*/
+        
+        return newlevel;
+    }
 
+    void adjustLevelset(float[] target) {
+        
+        Gdm3d gdm = new Gdm3d(levelsetImage, distance+2.0f, nx, ny, nz, rx, ry, rz,
+						null, null, target, 0.0f, 0.0f, 0.5f, 0.5f,
+						connectivity, lutdir);
+		
+		gdm.evolveNarrowBand(50, 0.01f);
+		
+		levelsetImage = gdm.getLevelSet();
+    }
+    
 }
