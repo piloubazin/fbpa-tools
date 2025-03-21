@@ -12,10 +12,11 @@ import java.util.*;
 /*
  * @author Pierre-Louis Bazin
  */
-public class LevelsetBoundaryAdjustment {
+public class CorticalBoundaryAdjustment {
 
 	// jist containers
-	private float[] levelsetImage=null;
+	private float[] gwbImage=null;
+	private float[] cgbImage=null;
 	private float[] contrastImage=null;
 	private int[] maskImage=null;
 	
@@ -30,7 +31,8 @@ public class LevelsetBoundaryAdjustment {
 	private static final	byte	BOTH = 0;
 	private int iterations=5;
 	private int repeats=2;
-	private float smoothness = 0.1f;
+	private float smoothness = 0.5f;
+	private float minthickness=2.0f;
 	private String lutdir=null;
 	private String connectivity="no";
 	
@@ -56,7 +58,8 @@ public class LevelsetBoundaryAdjustment {
 	private static final boolean		verbose=true;
 
 	// create inputs
-	public final void setLevelsetImage(float[] val) { levelsetImage = val; }
+	public final void setGwbLevelsetImage(float[] val) { gwbImage = val; }
+	public final void setCgbLevelsetImage(float[] val) { cgbImage = val; }
 	public final void setContrastImage(float[] val) { contrastImage = val; }
 	public final void setMaskImage(int[] val) { maskImage = val; }
 	    
@@ -76,11 +79,13 @@ public class LevelsetBoundaryAdjustment {
 	public final void setIterations(int val) { iterations = val; }
 	public final void setRepeats(int val) { repeats = val; }
 	public final void setSmoothness(float val) { smoothness = val; }
+	public final void setMinThickness(float val) { minthickness = val; }
 	public final void setConnectivity(String val) { connectivity = val; }
 	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
 	
 	// create outputs
-	public final float[] getLevelsetImage() { return levelsetImage; }
+	public final float[] getGwbLevelsetImage() { return gwbImage; }
+	public final float[] getCgbLevelsetImage() { return cgbImage; }
 	public final float[] getProbaImage() { return probaImage; }
 	
 	public void execute(){
@@ -94,31 +99,65 @@ public class LevelsetBoundaryAdjustment {
 		}
 		maskImage = null;
 	    
+		// labeling, assuming gwb inside cgb
         float[] output = new float[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
-            if (levelsetImage[xyz]<0) output[xyz] = 1.0f;
+            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2.0f;
+            else if (cgbImage[xyz]<0) output[xyz] = 1.0f;
             else output[xyz] = 0.0f;
         }
+        
         for (int t=0;t<repeats;t++) {
+            
             System.out.println("repeat "+(t+1));
-            float[] newlevel = fitBasicBoundarySigmoid(iterations);
-		    
-            adjustLevelset(newlevel);
+            
+            // Start with gwb, push boundary inward from cgb
+            float[] gwb0 = new float[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                gwb0[xyz] = Numerics.max(gwbImage[xyz], cgbImage[xyz]+minthickness);
+            }
+            adjustLevelset(gwbImage, gwb0);
+		
+            // Run the adjustment for gwb
+            float[] gwbN = fitBasicBoundarySigmoid(gwbImage, iterations);
+            adjustLevelset(gwbImage, gwbN);
+            
+            // Push boundary outward from gwb
+            float[] cgb0 = new float[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                cgb0[xyz] = Numerics.min(cgbImage[xyz], gwbImage[xyz]-minthickness);
+            }
+            adjustLevelset(cgbImage, cgb0);
+		
+            // Run the adjustment for gwb
+            float[] cgbN = fitBasicBoundarySigmoid(cgbImage, iterations);
+            adjustLevelset(cgbImage, cgbN);
+            
+            // Repeat
 		}
 		
         for (int xyz=0;xyz<nxyz;xyz++) {
-            if (levelsetImage[xyz]<0) output[xyz] += 2.0f;
+                 if (gwbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 8.0f;
+            else if (gwbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 7.0f;
+            else if (gwbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 6.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 5.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 4.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 3.0f;
+            else if (output[xyz]==2.0f) output[xyz] = 2.0f;
+            else if (output[xyz]==1.0f) output[xyz] = 1.0f;
+            else output[xyz] = 0.0f;
         }
         
         for (int xyz=0;xyz<nxyz;xyz++) {
-            levelsetImage[xyz] = Numerics.bounded(levelsetImage[xyz],-distance, distance);
+            gwbImage[xyz] = Numerics.bounded(gwbImage[xyz],-distance-minthickness, distance+minthickness);
+            cgbImage[xyz] = Numerics.bounded(cgbImage[xyz],-distance-minthickness, distance+minthickness);
         }
         
         probaImage = output;
 	    return;
 	}
 	
-	public float[] fitBasicBoundarySigmoid(int iter) {
+	public float[] fitBasicBoundarySigmoid(float[] levelset, int iter) {
 
 	    float delta = 0.001f;
 	    float dist0 = 2.0f;
@@ -130,7 +169,7 @@ public class LevelsetBoundaryAdjustment {
 	    float[] oldlevel = new float[nxyz];
 	    
 	    for (int xyz=0;xyz<nxyz;xyz++) {
-	        newlevel[xyz] = levelsetImage[xyz];
+	        newlevel[xyz] = levelset[xyz];
 	    }
 
 	    for (int t=0;t<iter;t++) {
@@ -205,7 +244,7 @@ public class LevelsetBoundaryAdjustment {
                             // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
                             if (bdcount>0) {
                                 float offset = 0.5f*(inbound/bdcount + exbound/bdcount)/(incount/bdcount + excount/bdcount);
-                                newlevel[xyz] = levelsetImage[xyz]-offset;
+                                newlevel[xyz] = levelset[xyz]-offset;
                                 
                                 maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
                             }
@@ -218,15 +257,15 @@ public class LevelsetBoundaryAdjustment {
         return newlevel;
     }
 
-    void adjustLevelset(float[] target) {
+    void adjustLevelset(float[] source, float[] target) {
         
-        Gdm3d gdm = new Gdm3d(levelsetImage, distance+2.0f, nx, ny, nz, rx, ry, rz,
+        Gdm3d gdm = new Gdm3d(source, distance+2.0f, nx, ny, nz, rx, ry, rz,
 						null, null, target, 0.0f, 0.0f, smoothness, 1.0f-smoothness,
 						connectivity, lutdir);
 		
 		gdm.evolveNarrowBand(50, 0.01f);
 		
-		levelsetImage = gdm.getLevelSet();
+		source = gdm.getLevelSet();
     }
     
 }
