@@ -185,8 +185,12 @@ public class LevelsetBoundaryAdjustment {
                             for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
                                 int dxyz = dx+nx*dy+nx*ny*dz;
                                 if (mask[dxyz]) {
-                                    if ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImage[dxyz]>contrastImage[xyz]) 
-                                        || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) {
+                                    if ( (contrastType==INCREASING && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImage[dxyz]>contrastImage[xyz]) 
+                                                                   || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) ) ) 
+                                        || (contrastType==DECREASING && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImage[dxyz]<=contrastImage[xyz]) 
+                                                                    || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImage[dxyz]>contrastImage[xyz]) ) ) ) {
+                                    
+                                        // to check??
                                         float wgtin = Numerics.bounded((contrastImage[dxyz]-interior)/(exterior-interior), delta, 1.0f-delta);
                                         float wgtex = Numerics.bounded((exterior-contrastImage[dxyz])/(exterior-interior), delta, 1.0f-delta);
                                         
