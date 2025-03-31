@@ -259,18 +259,23 @@ public class CorticalBoundaryAdjustment {
                 float exsum = 0.0f;
                 float bdsum = 0.0f;
 
-                for (byte n=0;n<26;n++) {
-                    int dxyz = Ngb.neighborIndex(n, xyz, nx, ny, nz);
-                    if (mask[dxyz]) {
-                        float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(reslevel[dxyz]/dist0)), delta, 1.0f-delta);
-                        float wgtin = 0.0f;
-                        float wgtex = 0.0f;
-                        for (int c=0;c<nc;c++) {
-                             // only take into account correct contrast values
-                            if ( (contrastTypes[c]==INCREASING && exterior[c][s]>interior[c][s]) 
-                                || (contrastTypes[c]==DECREASING && exterior[c][s]<interior[c][s])
-                                || (contrastTypes[c]==BOTH) ) {
-                                
+                boolean valid=true;
+                for (int c=0;c<nc;c++) {
+                    // only take into account correct contrast values
+                    if ( (contrastTypes[c]==INCREASING && exterior[c][s]<interior[c][s]) 
+                      || (contrastTypes[c]==DECREASING && exterior[c][s]>interior[c][s]) ) {
+                        valid=false;
+                    }
+                }
+                if (!valid) System.out.print("/");
+                else {    
+                    for (byte n=0;n<26;n++) {
+                        int dxyz = Ngb.neighborIndex(n, xyz, nx, ny, nz);
+                        if (mask[dxyz]) {
+                            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(reslevel[dxyz]/dist0)), delta, 1.0f-delta);
+                            float wgtin = 0.0f;
+                            float wgtex = 0.0f;
+                            for (int c=0;c<nc;c++) {                                
                                 if ( (contrastTypes[c]==INCREASING && ( (reslevel[dxyz]>reslevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
                                                                        || (reslevel[dxyz]<=reslevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
                                             || (contrastTypes[c]==DECREASING && ( (reslevel[dxyz]>reslevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
@@ -281,25 +286,25 @@ public class CorticalBoundaryAdjustment {
                                     wgtin += Numerics.bounded((exterior[c][s]-contrastImages[c][dxyz])/(exterior[c][s]-interior[c][s]), delta, 1.0f-delta);
                                     wgtex += Numerics.bounded((contrastImages[c][dxyz]-interior[c][s])/(exterior[c][s]-interior[c][s]), delta, 1.0f-delta);
                                 }
-                           }
-                        }
-                        inbound += levelset[dxyz]*wgtx*wgtin;
-                        insum += wgtx*wgtin;
-                
-                        exbound += levelset[dxyz]*wgtx*wgtex;
-                        exsum += wgtx*wgtex;
-                                
-                        bdsum += wgtx;
-                    }
-                }
-                // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
-                if (bdsum>0 && insum>0 && exsum>0) {
-                    float offset = 0.5f*(inbound/bdsum + exbound/bdsum)/(insum/bdsum + exsum/bdsum);
-                    newlevel[s] = reslevel[xyz]-offset;
+                            }
+                            inbound += levelset[dxyz]*wgtx*wgtin;
+                            insum += wgtx*wgtin;
                     
-                    maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
-                } else {
-                    System.out.print("!");
+                            exbound += levelset[dxyz]*wgtx*wgtex;
+                            exsum += wgtx*wgtex;
+                                    
+                            bdsum += wgtx;
+                        }
+                    }
+                    // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
+                    if (bdsum>0 && insum>0 && exsum>0) {
+                        float offset = 0.5f*(inbound/bdsum + exbound/bdsum)/(insum/bdsum + exsum/bdsum);
+                        newlevel[s] = reslevel[xyz]-offset;
+                        
+                        maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
+                    } else {
+                        System.out.print("!");
+                    }
                 }
             }
             System.out.println(" max difference: "+maxdiff);
