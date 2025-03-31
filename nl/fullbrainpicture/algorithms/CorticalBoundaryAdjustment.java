@@ -214,8 +214,8 @@ public class CorticalBoundaryAdjustment {
                 float incount = 0.0f;
                 float excount = 0.0f;
                 int xyz = coord[s];
-                for (byte n=0;n<26;n++) {
-                    int dxyz = Ngb.neighborIndex(n, xyz, nx, ny, nz);
+                for (int dx=-dist;dx<=dist;dx++) for (int dy=-dist;dy<=dist;dy++) for (int dz=-dist;dz<=dist;dz++) {
+                    int dxyz = xyz + dx + nx*dy + nx*ny*dz;
                     if (mask[dxyz]) {
                         if ( (contrastTypes[c]==INCREASING && ( (reslevel[dxyz]>reslevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
                                                            || (reslevel[dxyz]<=reslevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
@@ -249,6 +249,7 @@ public class CorticalBoundaryAdjustment {
             for (s=0;s<nspread;s++) {
                 reslevel[coord[s]] = newlevel[s];
             }
+            int ninvalid=0;
             float maxdiff = 0.0f;
             for (s=0;s<nspread;s++) {
                 int xyz = coord[s];
@@ -267,10 +268,10 @@ public class CorticalBoundaryAdjustment {
                         valid=false;
                     }
                 }
-                if (!valid) System.out.print("/");
+                if (!valid) ninvalid++;
                 else {    
-                    for (byte n=0;n<26;n++) {
-                        int dxyz = Ngb.neighborIndex(n, xyz, nx, ny, nz);
+                    for (int dx=-dist;dx<=dist;dx++) for (int dy=-dist;dy<=dist;dy++) for (int dz=-dist;dz<=dist;dz++) {
+                        int dxyz = xyz + dx + nx*dy + nx*ny*dz;
                         if (mask[dxyz]) {
                             float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(reslevel[dxyz]/dist0)), delta, 1.0f-delta);
                             float wgtin = 0.0f;
@@ -307,6 +308,7 @@ public class CorticalBoundaryAdjustment {
                     }
                 }
             }
+            System.out.println(" invalid: "+ninvalid+" / "+nspread);
             System.out.println(" max difference: "+maxdiff);
         }
         return reslevel;
