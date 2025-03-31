@@ -293,11 +293,13 @@ public class CorticalBoundaryAdjustment {
                     }
                 }
                 // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
-                if (bdsum>0) {
+                if (bdsum>0 && insum>0 && exsum>0) {
                     float offset = 0.5f*(inbound/bdsum + exbound/bdsum)/(insum/bdsum + exsum/bdsum);
                     newlevel[s] = reslevel[xyz]-offset;
                     
                     maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
+                } else {
+                    System.out.print("!");
                 }
             }
             System.out.println(" max difference: "+maxdiff);
