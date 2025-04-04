@@ -233,10 +233,11 @@ public class CorticalBoundaryAdjustment {
                     int dxyz = xyz + dx + nx*dy + nx*ny*dz;
                     if (mask[dxyz]) {
                         float dlvl = levelset[dxyz] - offlevel[dxyz];
+                        // here we exclude the center
                         if ( (contrastTypes[c]==INCREASING && ( (dlvl>lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
-                                                           || (dlvl<=lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
-                                || (contrastTypes[c]==DECREASING && ( (dlvl>lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
-                                                            || (dlvl<=lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                                           || (dlvl<lvl && contrastImages[c][dxyz]<contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==DECREASING && ( (dlvl>lvl && contrastImages[c][dxyz]<contrastImages[c][xyz]) 
+                                                            || (dlvl<lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
                                 || (contrastTypes[c]==BOTH) ) {
                                 
                             float win = - Numerics.bounded(dlvl/dist0, -1.0f, 1.0f);
@@ -319,10 +320,11 @@ public class CorticalBoundaryAdjustment {
                             float wgtin = 0.0f;
                             float wgtex = 0.0f;
                             for (int c=0;c<nc;c++) {
-                                if ( (contrastTypes[c]==INCREASING && ( (dlvl>lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                // here we include the center (to avoid being pulled by outliers)
+                                if ( (contrastTypes[c]==INCREASING && ( (dlvl>=lvl && contrastImages[c][dxyz]>=contrastImages[c][xyz]) 
                                                                    || (dlvl<=lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
-                                        || (contrastTypes[c]==DECREASING && ( (dlvl>lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
-                                                                    || (dlvl<=lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                        || (contrastTypes[c]==DECREASING && ( (dlvl>=lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                                    || (dlvl<=lvl && contrastImages[c][dxyz]>=contrastImages[c][xyz]) ) ) 
                                         || (contrastTypes[c]==BOTH) ) {
                                             
                                     // oreder not important, symmetric values
@@ -332,12 +334,12 @@ public class CorticalBoundaryAdjustment {
                             }
                             //inbound += incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
                             //inbound += excount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
-                            inbound += 0.5f*dlvl*wgtx*wgtin;
+                            inbound += dlvl*wgtx*wgtin;
                             insum += wgtx*wgtin;
                     
                             //exbound += excount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtex;
                             //exbound += incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtex;
-                            exbound += 0.5f*dlvl*wgtx*wgtex;
+                            exbound += dlvl*wgtx*wgtex;
                             exsum += wgtx*wgtex;
                                     
                             bdsum += wgtx;
@@ -345,7 +347,7 @@ public class CorticalBoundaryAdjustment {
                     }
                     // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
                     if (bdsum>0 && insum>0 && exsum>0) {
-                        float offset = (inbound/bdsum + exbound/bdsum)/(insum/bdsum + exsum/bdsum);
+                        float offset = 0.5f*(inbound/bdsum + exbound/bdsum)/(insum/bdsum + exsum/bdsum);
                         
                         offlist[s] += offset;
                         changed[coord[s]] = true;
@@ -359,7 +361,7 @@ public class CorticalBoundaryAdjustment {
                 }
             }
             if (t==0) System.out.println("ratio invalid: "+(ninvalid/nspread));
-            System.out.print("iteration "+(t+1)+" max difference: "+maxdiff);
+            System.out.println("iteration "+(t+1)+" max difference: "+maxdiff);
         }
         
 	    for (int xyz=0;xyz<nxyz;xyz++) {
