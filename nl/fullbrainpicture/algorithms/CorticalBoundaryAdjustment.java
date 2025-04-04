@@ -189,7 +189,8 @@ public class CorticalBoundaryAdjustment {
 	public float[] fitBasicBoundarySigmoid(float[] levelset, int iter, byte[] contrastTypes, boolean[] mask) {
 
 	    float delta = 0.001f;
-	    float dist0 = 2.0f;
+	    //float dist0 = 1.0f;
+	    float dist0 = distance/3.0f;
 	    
 	    int dist = Numerics.ceil(distance);
 	    
@@ -328,11 +329,13 @@ public class CorticalBoundaryAdjustment {
                                     wgtex += Numerics.bounded((contrastImages[c][dxyz]-interior[c][s])/(exterior[c][s]-interior[c][s]), delta, 1.0f-delta);
                                  }
                             }
-                            //inbound += (incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
+                            //inbound += incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
+                            //inbound += excount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
                             inbound += 0.5f*dlvl*wgtx*wgtin;
                             insum += wgtx*wgtin;
                     
                             //exbound += excount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtex;
+                            //exbound += incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtex;
                             exbound += 0.5f*dlvl*wgtx*wgtex;
                             exsum += wgtx*wgtex;
                                     
