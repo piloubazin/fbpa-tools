@@ -78,8 +78,7 @@ public class Gdm3d {
 	private float		landmineDist = 5.0f;
 	
 	// for debug and display
-	private static final boolean		debug=true;
-	private static final boolean		verbose=true;
+	private static final boolean		debug=false;
 	
 	private static class NarrowBand {
 		public int[] id;
