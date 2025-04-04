@@ -39,7 +39,7 @@ public class CorticalBoundaryAdjustment {
 	private float maskthickness=1.0f;
 	private String lutdir=null;
 	private String connectivity="no";
-	private float sampleRatio = 0.0f;
+	private float sampleRatio = 0.01f;
 	
 	private float[] probaImage;
 	
@@ -126,7 +126,7 @@ public class CorticalBoundaryAdjustment {
         float[] lvl = new float[nxyz];
         for (int p=0;p<pairs;p++) {
 
-            System.out.println("pair "+(p+1));
+            System.out.println("pair "+(p+1)+": GWB");
                 
             // Start with gwb, push boundary inward from cgb
             boolean[] gwbmask = new boolean[nxyz];
@@ -145,6 +145,8 @@ public class CorticalBoundaryAdjustment {
                 lvl = fitBasicBoundarySigmoid(gwbImage, iterations, gwbContrastTypes, gwbmask);
                 adjustLevelset(gwbImage, lvl);
             }
+            
+            System.out.println("pair "+(p+1)+": CGB");
             
             // Push cgb boundary outward from gwb
             boolean[] cgbmask = new boolean[nxyz];
@@ -259,8 +261,7 @@ public class CorticalBoundaryAdjustment {
 
 	    // multiple iterations of the offset within the same basis
 	    for (int t=0;t<iter;t++) {
-	        System.out.println("iteration "+(t+1));
-            for (s=0;s<nspread;s++) {
+	        for (s=0;s<nspread;s++) {
                 offlevel[coord[s]] = offlist[s];
             }
             // do we spread results to neighboring regions??
@@ -357,8 +358,8 @@ public class CorticalBoundaryAdjustment {
                     }
                 }
             }
-            System.out.println(" invalid: "+ninvalid+" / "+nspread);
-            System.out.println(" max difference: "+maxdiff);
+            if (t==0) System.out.println("ratio invalid: "+(ninvalid/nspread));
+            System.out.print("iteration "+(t+1)+" max difference: "+maxdiff);
         }
         
 	    for (int xyz=0;xyz<nxyz;xyz++) {
