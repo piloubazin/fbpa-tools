@@ -360,7 +360,7 @@ public class CorticalBoundaryAdjustment {
                     }
                 }
             }
-            if (t==0) System.out.println("ratio invalid: "+(ninvalid/nspread));
+            if (t==0) System.out.println("ratio invalid: "+((float)ninvalid/(float)nspread));
             System.out.println("iteration "+(t+1)+" max difference: "+maxdiff);
         }
         
