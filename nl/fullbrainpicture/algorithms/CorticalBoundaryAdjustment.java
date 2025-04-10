@@ -41,6 +41,10 @@ public class CorticalBoundaryAdjustment {
 	private String connectivity="no";
 	private float sampleRatio = 0.01f;
 	
+	// supervoxel stuff
+	int nsx,nsy,nsz,nsxyz;
+	float noiseRatio = 0.1f;
+	
 	private float[] probaImage;
 	
 	// numerical quantities
@@ -96,13 +100,14 @@ public class CorticalBoundaryAdjustment {
 	public final void setMinThickness(float val) { minthickness = val; }
 	public final void setConnectivity(String val) { connectivity = val; }
 	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
+	public final void setNoiseRatio(float val) { noiseRatio = val; }
 	
 	// create outputs
 	public final float[] getGwbLevelsetImage() { return gwbImage; }
 	public final float[] getCgbLevelsetImage() { return cgbImage; }
 	public final float[] getProbaImage() { return probaImage; }
 	
-	public void execute(){
+	public void executeLocal(){
 	    
 	    // make mask
 	    boolean[] mainmask = new boolean[nxyz];
@@ -163,6 +168,98 @@ public class CorticalBoundaryAdjustment {
             
                 // Run the adjustment for cgb
                 lvl = fitBasicBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
+                adjustLevelset(cgbImage, lvl);
+            }
+        }
+		
+        for (int xyz=0;xyz<nxyz;xyz++) {
+                 if (gwbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 8.0f;
+            else if (gwbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 7.0f;
+            else if (gwbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 6.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 5.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 4.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 3.0f;
+            else if (output[xyz]==2.0f) output[xyz] = 2.0f;
+            else if (output[xyz]==1.0f) output[xyz] = 1.0f;
+            else output[xyz] = 0.0f;
+        }
+        
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            gwbImage[xyz] = Numerics.bounded(gwbImage[xyz],-distance-minthickness, distance+minthickness);
+            cgbImage[xyz] = Numerics.bounded(cgbImage[xyz],-distance-minthickness, distance+minthickness);
+        }
+        
+        probaImage = output;
+	    return;
+	}
+	
+	public void executeSuper(){
+	    
+	    // make mask
+	    boolean[] mainmask = new boolean[nxyz];
+		for (int xyz=0;xyz<nxyz;xyz++) {
+		    mainmask[xyz] = true;
+		    for (int c=0;c<nc;c++) {
+		        if (contrastImages[c][xyz]==0) mainmask[xyz] = false;
+		    }
+		    if (maskImage!=null && maskImage[xyz]==0) mainmask[xyz] = false;
+		}
+		maskImage = null;
+		
+		// labeling, assuming gwb inside cgb
+        float[] output = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2.0f;
+            else if (cgbImage[xyz]<0) output[xyz] = 1.0f;
+            else output[xyz] = 0.0f;
+        }
+
+        float[] lvl = new float[nxyz];
+        for (int p=0;p<pairs;p++) {
+
+            System.out.println("pair "+(p+1)+": GWB");
+                
+            // Start with gwb, push boundary inward from cgb
+            boolean[] gwbmask = new boolean[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                lvl[xyz] = Numerics.max(gwbImage[xyz], cgbImage[xyz]+minthickness);
+                gwbmask[xyz] = mainmask[xyz];
+                if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
+            }
+            adjustLevelset(gwbImage, lvl);
+            
+            // precompute super-voxel parcels (different for each mask)
+            int[] parcel = supervoxelParcellation(contrastImages[0], gwbmask, Numerics.ceil(distance), noiseRatio);
+	    
+            for (int t=0;t<repeats;t++) {
+                
+                System.out.println("repeat "+(t+1));
+                
+                // Run the adjustment for gwb
+                lvl = fitSupervoxelBoundarySigmoid(gwbImage, parcel, iterations, gwbContrastTypes, gwbmask);
+                adjustLevelset(gwbImage, lvl);
+            }
+            
+            System.out.println("pair "+(p+1)+": CGB");
+            
+            // Push cgb boundary outward from gwb
+            boolean[] cgbmask = new boolean[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                lvl[xyz] = Numerics.min(cgbImage[xyz], gwbImage[xyz]-minthickness);
+                cgbmask[xyz] = mainmask[xyz];
+                if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
+            }
+            adjustLevelset(cgbImage, lvl);
+            
+            // precompute super-voxel parcels (different for each mask)
+            parcel = supervoxelParcellation(contrastImages[0], cgbmask, Numerics.ceil(distance), noiseRatio);
+
+            for (int t=0;t<repeats;t++) {
+                
+                System.out.println("repeat "+(t+1));
+            
+                // Run the adjustment for cgb
+                lvl = fitSupervoxelBoundarySigmoid(cgbImage, parcel, iterations, cgbContrastTypes, cgbmask);
                 adjustLevelset(cgbImage, lvl);
             }
         }
@@ -381,4 +478,450 @@ public class CorticalBoundaryAdjustment {
 		source = gdm.getLevelSet();
     }
 
+    int[] supervoxelParcellation(float[] image, boolean[] mask, int scaling, float noise) {
+	    // Compute the supervoxel grid
+	    System.out.println("original dimensions: ("+nx+", "+ny+", "+nz+")");
+	    nsx = Numerics.floor(nx/scaling);
+	    nsy = Numerics.floor(ny/scaling);
+	    nsz = Numerics.floor(nz/scaling);
+	    nsxyz = nsx*nsy*nsz;
+	    System.out.println("rescaled dimensions: ("+nsx+", "+nsy+", "+nsz+")");
+	    
+	    // init downscaled images
+	    int[] parcel = new int[nxyz];
+	    float[] rescaled = new float[nsxyz];
+	    //memsImage = new float[nsxyz];
+	    int[] count = new int[nsxyz];
+	    
+	    // init supervoxel centroids
+	    // include all supervoxels with non-zero values inside
+		float[][] centroid = new float[3][nsxyz];
+	    for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
+	        int xyzs = xs+nsx*ys+nsx*nsy*zs;
+	        centroid[X][xyzs] = 0.0f;
+	        centroid[Y][xyzs] = 0.0f;
+	        centroid[Z][xyzs] = 0.0f;
+	        count[xyzs] = 0;
+	        for (int dx=0;dx<scaling;dx++) for (int dy=0;dy<scaling;dy++) for (int dz=0;dz<scaling;dz++) {
+	            int xyz = Numerics.floor(xs*scaling)+dx+nx*(Numerics.floor(ys*scaling)+dy)+nx*ny*(Numerics.floor(zs*scaling)+dz);
+	            if (mask[xyz]) {
+                    centroid[X][xyzs] += Numerics.floor(xs*scaling) + dx;
+                    centroid[Y][xyzs] += Numerics.floor(ys*scaling) + dy;
+                    centroid[Z][xyzs] += Numerics.floor(zs*scaling) + dz;
+                    count[xyzs]++;
+                }
+            }
+            if (count[xyzs]>0) {
+                centroid[X][xyzs] /= count[xyzs];
+                centroid[Y][xyzs] /= count[xyzs];
+                centroid[Z][xyzs] /= count[xyzs];
+	        }
+	    }
+	    
+	    // init: search for voxel with lowest gradient within the region instead? (TODO)
+	    // OR voxel most representative?
+	    double[] selection = new double[27];
+	    Percentile median = new Percentile();
+	    for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
+	        int xyzs = xs+nsx*ys+nsx*nsy*zs;
+	        int x0 = Numerics.bounded(Numerics.floor(centroid[X][xyzs]),1,nx-2);
+	        int y0 = Numerics.bounded(Numerics.floor(centroid[Y][xyzs]),1,ny-2);
+	        int z0 = Numerics.bounded(Numerics.floor(centroid[Z][xyzs]),1,nz-2);
+	        int xyz0 = x0+nx*y0+nx*ny*z0;
+	        
+	        int s=0;
+	        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+	            selection[s] = image[xyz0+dx+nx*dy+nx*ny*dz];
+	            s++;
+	        }
+	        double med = median.evaluate(selection, 50.0);    
+	        for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+	            if (image[xyz0+dx+nx*dy+nx*ny*dz]==med) {
+                    centroid[X][xyzs] = x0+dx;
+                    centroid[Y][xyzs] = y0+dy;
+                    centroid[Z][xyzs] = z0+dz;
+                    dx=2;dy=2;dz=2;
+	            }
+	        }
+	    }
+	    // Estimate approximate min,max from sampled grid values
+	    float Imin = 1e9f;
+	    float Imax = -1e9f;
+        for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
+		    int xyzs = xs+nsx*ys+nsx*nsy*zs;
+	        
+		    int x = Numerics.bounded(Numerics.floor(centroid[X][xyzs]),1,nx-2);
+	        int y = Numerics.bounded(Numerics.floor(centroid[Y][xyzs]),1,ny-2);
+	        int z = Numerics.bounded(Numerics.floor(centroid[Z][xyzs]),1,nz-2);
+	        int xyz = x+nx*y+nx*ny*z;	        
+	        if (mask[xyz]) {
+	            if (image[xyz]<Imin) Imin = image[xyz];
+	            if (image[xyz]>Imax) Imax = image[xyz];
+	        }
+	    }
+	    // normalize the noise parameter by intensity, but not by distance (-> same speed indep of scale)
+	    System.out.println("intensity scale: ["+Imin+", "+Imax+"]");
+	    if (Imax>Imin) {
+	        noise = noise*noise*(Imax-Imin)*(Imax-Imin);
+	    }
+	    
+	    // start a voxel heap at each center
+	    BinaryHeap4D heap = new BinaryHeap4D(nx*ny+ny*nz+nz*nx, BinaryHeap4D.MINTREE);
+		boolean[] processed = new boolean[nx*ny*nz];
+		for (int xs=0;xs<nsx;xs++) for (int ys=0;ys<nsy;ys++) for (int zs=0;zs<nsz;zs++) {
+		    int xyzs = xs+nsx*ys+nsx*nsy*zs;
+	        count[xyzs]=0;
+	        
+	        int x = Numerics.bounded(Numerics.floor(centroid[X][xyzs]),1,nx-2);
+	        int y = Numerics.bounded(Numerics.floor(centroid[Y][xyzs]),1,ny-2);
+	        int z = Numerics.bounded(Numerics.floor(centroid[Z][xyzs]),1,nz-2);
+	        int xyz = x+nx*y+nx*ny*z;	        
+	        if (mask[xyz]) {
+	            // set as starting point
+	            parcel[xyz] = xyzs+1;
+	            rescaled[xyzs] = image[xyz];
+	            count[xyzs] = 1;
+	            processed[xyz] = true;
+	            
+	            // add neighbors to the tree
+	            for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+	                if (dx*dx+dy*dy+dz*dz==1 && x+dx>=0 && y+dy>=0 && z+dz>=0 && x+dx<nx && y+dy<ny && z+dz<nz) {
+                        int xyznb = x+dx+nx*(y+dy)+nx*ny*(z+dz);
+                         // exclude zero as mask
+                        if (mask[xyznb]) {
+                        
+                            // distance function
+                            float dist = (x+dx-centroid[X][xyzs])*(x+dx-centroid[X][xyzs])
+                                        +(y+dy-centroid[Y][xyzs])*(y+dy-centroid[Y][xyzs])
+                                        +(z+dz-centroid[Z][xyzs])*(z+dz-centroid[Z][xyzs]);
+                                    
+                            float contrast = (image[xyznb]-rescaled[xyzs])
+                                            *(image[xyznb]-rescaled[xyzs]);
+                                        
+                            heap.addValue(noise*dist+contrast, x+dx,y+dy,z+dz, xyzs+1);
+                        }
+                    }                    
+	            }
+	        }
+	    }
+	    // grow to 
+        while (heap.isNotEmpty()) {
+        	// extract point with minimum distance
+        	float curr = heap.getFirst();
+        	int x = heap.getFirstX();
+        	int y = heap.getFirstY();
+        	int z = heap.getFirstZ();
+        	int xyzs = heap.getFirstK()-1;
+        	heap.removeFirst();
+        	int xyz = x+nx*y+nx*ny*z;
+        	
+			if (processed[xyz])  continue;
+			
+        	// update the cluster
+			parcel[xyz] = xyzs+1;
+            rescaled[xyzs] = count[xyzs]*rescaled[xyzs] + image[xyz];
+            
+            centroid[X][xyzs] = count[xyzs]*centroid[X][xyzs] + x;
+	        centroid[Y][xyzs] = count[xyzs]*centroid[Y][xyzs] + y;
+	        centroid[Z][xyzs] = count[xyzs]*centroid[Z][xyzs] + z;
+	        
+	        count[xyzs] += 1;
+	        rescaled[xyzs] /= count[xyzs];
+	        centroid[X][xyzs] /= count[xyzs];
+	        centroid[Y][xyzs] /= count[xyzs];
+	        centroid[Z][xyzs] /= count[xyzs];
+	        
+	        processed[xyz]=true;
+			
+            // add neighbors to the tree
+            for (int dx=-1;dx<=1;dx++) for (int dy=-1;dy<=1;dy++) for (int dz=-1;dz<=1;dz++) {
+	            if (dx*dx+dy*dy+dz*dz==1 && x+dx>=0 && y+dy>=0 && z+dz>=0 && x+dx<nx && y+dy<ny && z+dz<nz) {
+                    int xyznb = x+dx+nx*(y+dy)+nx*ny*(z+dz);
+
+                    // exclude zero as mask
+                    if (mask[xyznb] && !processed[xyznb]) {
+                    
+                        // distance function
+                        float dist = (x+dx-centroid[X][xyzs])*(x+dx-centroid[X][xyzs])
+                                    +(y+dy-centroid[Y][xyzs])*(y+dy-centroid[Y][xyzs])
+                                    +(z+dz-centroid[Z][xyzs])*(z+dz-centroid[Z][xyzs]);
+                                
+                        float contrast = (image[xyznb]-rescaled[xyzs])
+                                        *(image[xyznb]-rescaled[xyzs]);
+                                        
+                        heap.addValue(noise*dist+contrast, x+dx,y+dy,z+dz, xyzs+1);
+                    }
+                }
+            }
+		}
+		return parcel;
+	}
+
+	/*
+	public float[] fitSupervoxelBoundarySigmoid(float[] levelset, int[] parcel, int iter, byte[] contrastTypes, boolean[] mask) {
+
+	    float delta = 0.001f;
+	    //float dist0 = 1.0f;
+	    float dist0 = distance/3.0f;
+	    
+	    int dist = Numerics.ceil(distance);
+	    
+	    // ratio x approx half of the search volume (removing boundary voxels)
+	    float mincount = sampleRatio*4.0f*dist*dist*dist;
+	    
+	    // build smaller arrays for speed
+	    int nspread = 0;
+	    for (int xyz=0;xyz<nxyz;xyz++) if (mask[xyz] && Numerics.abs(levelset[xyz])<spread) nspread++;
+	    
+	    // go over voxels close enough to the boundary
+	    float[] offlevel = new float[nxyz];
+	    float[] offlist = new float[nspread];
+	    int[] coord = new int[nspread];
+	    float[][] interior = new float[nc][nspread];
+	    float[][] exterior = new float[nc][nspread];
+	    float[][] incount = new float[nc][nspread];
+	    float[][] excount = new float[nc][nspread];
+	    boolean[] changed = new boolean[nxyz];
+	    
+	    int s=0;
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        //offlevel[xyz] = 0.0f;
+	        if (mask[xyz] && Numerics.abs(levelset[xyz])<spread) {
+                //offlist[s] = 0.0f;
+                coord[s] = xyz;
+                s++;
+            }
+	    }
+	    // precompute region interior, exterior?
+	    for (s=0;s<nspread;s++) {
+            for (int c=0;c<nc;c++) {
+                incount[c][s] = 0.0f;
+                excount[c][s] = 0.0f;
+                int xyz = coord[s];
+                float lvl = levelset[xyz] - offlevel[xyz];
+                for (int dxyz=0;dxyz<nxyz;dxyz++) if (parcel[dxyz]==parcel[xyz]) {
+                    if (mask[dxyz]) {
+                        float dlvl = levelset[dxyz] - offlevel[dxyz];
+                        // here we exclude the center
+                        if ( (contrastTypes[c]==INCREASING && ( (dlvl>lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                                           || (dlvl<lvl && contrastImages[c][dxyz]<contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==DECREASING && ( (dlvl>lvl && contrastImages[c][dxyz]<contrastImages[c][xyz]) 
+                                                            || (dlvl<lvl && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==BOTH) ) {
+                                
+                            float win = - Numerics.bounded(dlvl/dist0, -1.0f, 1.0f);
+                            if (win<0) {
+                                exterior[c][s] += win*win*contrastImages[c][dxyz];
+                                excount[c][s] += win*win;
+                            }
+                            if (win>0) {
+                                interior[c][s] += win*win*contrastImages[c][dxyz];
+                                incount[c][s] += win*win;
+                            }
+                        }
+                    }
+                }
+                // skip if one is empty
+                if (incount[c][s]>0 && excount[c][s]>0) {
+                    interior[c][s] /= incount[c][s];
+                    exterior[c][s] /= excount[c][s];
+                }
+            }
+        }
+
+	    // multiple iterations of the offset within the same basis
+	    for (int t=0;t<iter;t++) {
+	        for (s=0;s<nspread;s++) {
+                offlevel[coord[s]] = offlist[s];
+            }
+            // do we spread results to neighboring regions??
+            int ninvalid=0;
+            float maxdiff = 0.0f;
+            for (s=0;s<nspread;s++) {
+                int xyz = coord[s];
+                
+                float inbound = 0.0f;
+                float exbound = 0.0f;
+                float insum = 0.0f;
+                float exsum = 0.0f;
+                float bdsum = 0.0f;
+                
+                boolean valid=true;
+                for (int c=0;c<nc;c++) {
+
+                    // only take into account correct contrast values
+                    if ( (contrastTypes[c]==INCREASING && exterior[c][s]<interior[c][s]) 
+                      || (contrastTypes[c]==DECREASING && exterior[c][s]>interior[c][s]) ) {
+                        valid=false;
+                    }
+                    // and make sure there's enough samples
+                    if (incount[c][s]<=mincount || excount[c][s]<=mincount) {
+                        valid = false;
+                    }
+                }
+                //valid = true;
+                if (!valid) {
+                    ninvalid++;
+                    changed[coord[s]] = false;
+                } else {    
+                    float lvl = levelset[xyz] - offlevel[xyz];
+                    for (int dxyz=0;dxyz<nxyz;dxyz++) if (parcel[dxyz]==parcel[xyz]) {
+                        if (mask[dxyz]) {
+                            float dlvl = levelset[dxyz] - offlevel[dxyz];
+                            //float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(reslevel[dxyz]/dist0)), delta, 1.0f-delta);
+                            //float wgtx = (float)FastMath.exp(-0.5*Numerics.square(dlvl/dist0));
+                            float wgtx = 1.0f;
+                            float wgtin = 0.0f;
+                            float wgtex = 0.0f;
+                            for (int c=0;c<nc;c++) {
+                                // here we include the center (to avoid being pulled by outliers)
+                                if ( (contrastTypes[c]==INCREASING && ( (dlvl>=lvl && contrastImages[c][dxyz]>=contrastImages[c][xyz]) 
+                                                                   || (dlvl<=lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
+                                        || (contrastTypes[c]==DECREASING && ( (dlvl>=lvl && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                                    || (dlvl<=lvl && contrastImages[c][dxyz]>=contrastImages[c][xyz]) ) ) 
+                                        || (contrastTypes[c]==BOTH) ) {
+                                            
+                                    // oreder not important, symmetric values
+                                    wgtin += Numerics.bounded((exterior[c][s]-contrastImages[c][dxyz])/(exterior[c][s]-interior[c][s]), delta, 1.0f-delta);
+                                    wgtex += Numerics.bounded((contrastImages[c][dxyz]-interior[c][s])/(exterior[c][s]-interior[c][s]), delta, 1.0f-delta);
+                                 }
+                            }
+                            //inbound += incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
+                            //inbound += excount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtin;
+                            inbound += dlvl*wgtx*wgtin;
+                            insum += wgtx*wgtin;
+                    
+                            //exbound += excount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtex;
+                            //exbound += incount[c][s]/(incount[c][s]+excount[c][s])*dlvl*wgtx*wgtex;
+                            exbound += dlvl*wgtx*wgtex;
+                            exsum += wgtx*wgtex;
+                                    
+                            bdsum += wgtx;
+                        }
+                    }
+                    // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
+                    if (bdsum>0 && insum>0 && exsum>0) {
+                        float offset = 0.5f*(inbound/bdsum + exbound/bdsum)/(insum/bdsum + exsum/bdsum);
+                        
+                        offlist[s] += offset;
+                        changed[coord[s]] = true;
+                        
+                        maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
+                    } else {
+                        System.out.print("!");
+                        ninvalid++;
+                        changed[coord[s]] = false;
+                    }
+                }
+            }
+            if (t==0) System.out.println("ratio invalid: "+((float)ninvalid/(float)nspread));
+            System.out.println("iteration "+(t+1)+" max difference: "+maxdiff);
+        }
+        
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        offlevel[xyz] = levelset[xyz] - offlevel[xyz];
+        }
+        return offlevel;
+    }*/
+    
+	public float[] fitSupervoxelBoundarySigmoid(float[] levelset, int[] parcel, int iter, byte[] contrastTypes, boolean[] mask) {
+
+	    float delta = 0.001f;
+	    //float dist0 = 1.0f;
+	    float dist0 = distance/3.0f;
+	    
+	    int dist = Numerics.ceil(distance);
+	    
+	    // ratio x approx half of the search volume (removing boundary voxels)
+	    float mincount = sampleRatio*4.0f*dist*dist*dist;
+	    
+	    // define stats over regions (could be precomputed)
+	    float[][] avg = new float[nc][nsxyz];
+	    float[][] std = new float[nc][nsxyz];
+	    int[] count = new int[nsxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+		    if (mask[xyz] && parcel[xyz]>0) {
+		        count[parcel[xyz]-1]++;
+		        for (int c=0;c<nc;c++) {
+		            avg[c][parcel[xyz]-1] += contrastImages[c][xyz];
+		        }
+		    }
+		}
+		for (int xyzs=0;xyzs<nsxyz;xyzs++) if (count[xyzs]>0) for (int c=0;c<nc;c++) {
+            avg[c][xyzs] /= count[xyzs];
+		}
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+		    if (mask[xyz] && parcel[xyz]>0) {
+		        for (int c=0;c<nc;c++) {
+		            std[c][parcel[xyz]-1] += (avg[c][parcel[xyz]-1]-contrastImages[c][xyz])*(avg[c][parcel[xyz]-1]-contrastImages[c][xyz]);
+		        }
+		    }
+		}
+		for (int xyzs=0;xyzs<nsxyz;xyzs++) if (count[xyzs]>1) for (int c=0;c<nc;c++) {
+            std[c][xyzs] = (float)FastMath.sqrt(std[c][xyzs]/(count[xyzs]-1.0f));
+		}
+
+		float[] meanlvl = new float[nsxyz];
+        boolean[] boundary = new boolean[nsxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            if (mask[xyz] && parcel[xyz]>0) {
+                meanlvl[parcel[xyz]-1] += levelset[xyz];
+                if (Numerics.abs(levelset[xyz])<spread) boundary[parcel[xyz]-1] = true;
+            }
+        }
+		for (int xyzs=0;xyzs<nsxyz;xyzs++) if (count[xyzs]>0) {
+            meanlvl[xyzs] /= count[xyzs];
+        }
+        
+		float[] offparcel = new float[nsxyz];
+		// multiple iterations of the offset within the same basis
+	    for (int t=0;t<iter;t++) {
+	        // 2. find most likely neighbor on opposite side of boundary
+	        float maxdiff = 0.0f;
+	        for (int xyzs=0;xyzs<nsxyz;xyzs++) if (boundary[xyzs]) {
+	            // rank direct neighbors from intensity distance, levelset value, number of valid points (?)
+	            int best=-1;
+	            double pbest=0.0;
+	            for (byte d=0;d<26;d++) {
+	                int ngbs = Ngb.neighborIndex(d, xyzs, nsx, nsy, nsz);
+	                
+	                if (count[ngbs]>0) {
+                        float ldist = (meanlvl[ngbs]+offparcel[ngbs]) - (meanlvl[xyzs]+offparcel[xyzs]);
+	                
+                        float idist = 0.0f;
+                        for (int c=0;c<nc;c++) {
+                            if (contrastTypes[c]==INCREASING && ldist*(avg[c][ngbs]-avg[c][xyzs])>0) {
+                                idist += Numerics.square((avg[c][ngbs]-avg[c][xyzs])/(std[c][ngbs]+std[c][xyzs]));
+                            } else if (contrastTypes[c]==DECREASING && ldist*(avg[c][ngbs]-avg[c][xyzs])<0) {
+                                idist += Numerics.square((avg[c][ngbs]-avg[c][xyzs])/(std[c][ngbs]+std[c][xyzs]));
+                            }
+                        }
+                        double pngb = (1.0 - FastMath.exp( -0.5*Numerics.square(ldist/dist0) ))
+                                      *(1.0 - FastMath.exp( -0.5*idist/nc));
+                                      
+                        if (pngb>pbest) {
+                            pbest = pngb;
+                            best = ngbs;
+                        }
+                    }
+                }
+                if (best!=-1) {
+                    // 3. compute offset
+                    float offset = 0.5f*((meanlvl[xyzs]+offparcel[xyzs])-(meanlvl[best]+offparcel[best]));
+                    offparcel[xyzs] += offset;
+                } else {
+                    System.out.print(".");
+                    //ninvalid++;
+                    //changed[xyzs] = false;
+                }
+            }
+            //if (t==0) System.out.println("ratio invalid: "+((float)ninvalid/(float)nspread));
+            System.out.println("iteration "+(t+1)+" max difference: "+maxdiff);
+        }
+        float[] offlevel = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) if (parcel[xyz]>0) {
+	        offlevel[xyz] = levelset[xyz] + offparcel[parcel[xyz]-1];
+        }
+        return offlevel;
+    }   
 }
