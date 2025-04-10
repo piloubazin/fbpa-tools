@@ -909,6 +909,7 @@ public class CorticalBoundaryAdjustment {
                     // 3. compute offset
                     float offset = 0.5f*((meanlvl[xyzs]+offparcel[xyzs])-(meanlvl[best]+offparcel[best]));
                     offparcel[xyzs] += offset;
+                    if (Numerics.abs(offset)>maxdiff) maxdiff = Numerics.abs(offset);
                 } else {
                     System.out.print(".");
                     //ninvalid++;
