@@ -22,6 +22,7 @@ public class LevelsetsToMeshConnector {
     private float side = 0.5f;
     private float distance = 1.0f;
     
+    private boolean found=false;
     private float[] pointList;
     private int[] triangleList;
     
@@ -46,7 +47,8 @@ public class LevelsetsToMeshConnector {
 	public final void setResolutions(float x, float y, float z) { rx=x; ry=y; rz=z; }
 	public final void setResolutions(float[] res) { rx=res[0]; ry=res[1]; rz=res[2]; }
 
-	public final float[] getPointList() { return pointList; }
+	public final boolean isBoundaryFound() { return found; }
+    public final float[] getPointList() { return pointList; }
     public final int[] getTriangleList() { return triangleList; }
     
 	public final void execute() {
@@ -68,9 +70,12 @@ public class LevelsetsToMeshConnector {
 			}
 		}
 		if (avg_n==0) {
-		    System.out.println("!! no common boundary found: exiting");
+		    System.out.println(" no common boundary found: exiting");
+		    found=false;
 		    return;
 		}
+		found=true;
+		
 		avg_x /= avg_n;
 		avg_y /= avg_n;
 		avg_z /= avg_n;
@@ -163,36 +168,41 @@ public class LevelsetsToMeshConnector {
 		double T1x, T1y, T1z;
 		double T2x, T2y, T2z;
 	    if (Dx*Dx>Dy*Dy && Dx*Dx>Dz*Dz) {
-	        T1x = 0.0 - Dx;
-	        T1y = 1.0 - Dy;
-	        T1z = 0.0 - Dz;
-	        T2x = 0.0 - Dx;
-	        T2y = 0.0 - Dy;
-	        T2z = 1.0 - Dz;
+	        T1x = 0.0 - Dy/grad*Dx/grad;
+	        T1y = 1.0 - Dy/grad*Dy/grad;
+	        T1z = 0.0 - Dy/grad*Dz/grad;
+	        T2x = 0.0 - Dz/grad*Dx/grad;
+	        T2y = 0.0 - Dz/grad*Dy/grad;
+	        T2z = 1.0 - Dz/grad*Dz/grad;
 	    } else if (Dy*Dy>Dz*Dz && Dy*Dy>Dx*Dx) {
-		    T1x = 0.0 - Dx;
-	        T1y = 0.0 - Dy;
-	        T1z = 1.0 - Dz;
-	        T2x = 1.0 - Dx;
-	        T2y = 0.0 - Dy;
-	        T2z = 0.0 - Dz;
+		    T1x = 0.0 - Dz/grad*Dx/grad;
+	        T1y = 0.0 - Dz/grad*Dy/grad;
+	        T1z = 1.0 - Dz/grad*Dz/grad;
+	        T2x = 1.0 - Dx/grad*Dx/grad;
+	        T2y = 0.0 - Dx/grad*Dy/grad;
+	        T2z = 0.0 - Dx/grad*Dz/grad;
 	    } else {
-	        T1x = 1.0 - Dx;
-	        T1y = 0.0 - Dy;
-	        T1z = 0.0 - Dz;
-	        T2x = 0.0 - Dx;
-	        T2y = 1.0 - Dy;
-	        T2z = 0.0 - Dz;
+	        T1x = 1.0 - Dx/grad*Dx/grad;
+	        T1y = 0.0 - Dx/grad*Dy/grad;
+	        T1z = 0.0 - Dx/grad*Dz/grad;
+	        T2x = 0.0 - Dy/grad*Dx/grad;
+	        T2y = 1.0 - Dy/grad*Dy/grad;
+	        T2z = 0.0 - Dy/grad*Dz/grad;
 	    }
 	    double N1 = FastMath.sqrt(T1x*T1x + T1y*T1y + T1z*T1z);
 	    double N2 = FastMath.sqrt(T2x*T2x + T2y*T2y + T2z*T2z);
 	    
-	    double T3x = 1.0/2.0*T1x/N1 + FastMath.sqrt(2.0)/2.0*T2x/N2;
-	    double T3y = 1.0/2.0*T1y/N1 + FastMath.sqrt(2.0)/2.0*T2y/N2;
-	    double T3z = 1.0/2.0*T1z/N1 + FastMath.sqrt(2.0)/2.0*T2z/N2;
+	    double T3x = 1.0/2.0*T1x/N1 + FastMath.sqrt(3.0)/2.0*T2x/N2;
+	    double T3y = 1.0/2.0*T1y/N1 + FastMath.sqrt(3.0)/2.0*T2y/N2;
+	    double T3z = 1.0/2.0*T1z/N1 + FastMath.sqrt(3.0)/2.0*T2z/N2;
 
 	    double N3 = FastMath.sqrt(T3x*T3x + T3y*T3y + T3z*T3z);
 
+	    // testing orthogonality
+	    //System.out.println(" D*T1 = "+ (Dx*T1x+Dy*T1y+Dz*T1z)/(grad*N1));
+	    //System.out.println(" D*T2 = "+ (Dx*T2x+Dy*T2y+Dz*T2z)/(grad*N2));
+	    //System.out.println(" D*T3 = "+ (Dx*T3x+Dy*T3y+Dz*T3z)/(grad*N3));
+	    
 	    // 3. Generate connector mesh
 	    pointList = new float[3*20];
 	    triangleList = new int[3*36];
