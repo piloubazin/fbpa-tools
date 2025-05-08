@@ -632,6 +632,19 @@ public class Mgdm3d {
     	return labels;
     }
 
+	/**
+	 *	reconstruct the level set functions with possible approximation far from contour 
+	 */
+    public final int[] reconstructedLabel(int n) {
+    	int[] label = new int[nx*ny*nz];
+    	for (int xyz=0; xyz<nx*ny*nz; xyz++) {
+            if (mgdmlabels[n][xyz]>-1) {
+                label[xyz] = objLabel[mgdmlabels[n][xyz]];
+			}
+    	}
+    	return label;
+    }
+
     /** 
     *  	Evolution using the narrow band scheme 
     *	(the reinitialization is incorporated)

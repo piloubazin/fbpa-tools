@@ -76,17 +76,14 @@ public class ParcellationMgdmSmoothing {
         mgdm.evolveNarrowBand(iterationParam, changeParam);
         
         // 4. copy the results
-        segImage = new int[nx*ny*nz];
+        segImage = mgdm.reconstructedLabel(0);
 		mgdmImage = new float[nx*ny*nz];
         for (int xyz=0;xyz<nx*ny*nz;xyz++) {
-            segImage[xyz] = mgdm.getLabels()[0][xyz];
             mgdmImage[xyz] = mgdm.getFunctions()[0][xyz];
         }
         
         // 5. change probabilitiy maps to reflect the changes
         for (int xyz=0;xyz<nx*ny*nz;xyz++) {
-            if (segImage[xyz]==-1) segImage[xyz] = 0;
-            
             if (segImage[xyz]!=parcelImage[xyz] && mgdmImage[xyz]>0) {
                 probaImage[xyz] *= FastMath.exp(-mgdmImage[xyz]/distParam);
             }
