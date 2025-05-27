@@ -764,6 +764,12 @@ public class CorticalBoundaryAdjustment {
 	        
 	        // multiple iterations of the offset within the same basis
             for (int t=0;t<iter;t++) {
+                float inbound=0.0f;
+                float exbound=0.0f;
+                float insum = 0.0f;
+                float exsum = 0.0f;
+                float bdsum = 0.0f;
+                
 	            for (int n=0;n<nroi;n++) {
 	                int dxyz = roi[n];
                     float dlvl = levelset[dxyz] - offlevel[dxyz];
