@@ -125,6 +125,23 @@ public class CorticalBoundaryAdjustment {
 		}
 		maskImage = null;
 	    
+        // Start with gwb, push boundary inward from cgb
+        // Push cgb boundary outward from gwb
+        float[] lvl1 = new float[nxyz];
+        float[] lvl2 = new float[nxyz];
+        boolean[] gwbmask = new boolean[nxyz];
+        boolean[] cgbmask = new boolean[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            lvl1[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
+            lvl2[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
+            gwbmask[xyz] = mainmask[xyz];
+            if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
+            cgbmask[xyz] = mainmask[xyz];
+            if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
+        }
+        gwbImage = adjustLevelset(gwbImage, lvl1);
+        cgbImage = adjustLevelset(cgbImage, lvl2);
+		
 		// labeling, assuming gwb inside cgb
         float[] output = new float[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
@@ -133,47 +150,36 @@ public class CorticalBoundaryAdjustment {
             else output[xyz] = 0.0f;
         }
 
-        float[] lvl = new float[nxyz];
         for (int p=0;p<pairs;p++) {
 
             System.out.println("pair "+(p+1)+": GWB");
                 
-            // Start with gwb, push boundary inward from cgb
-            boolean[] gwbmask = new boolean[nxyz];
             for (int xyz=0;xyz<nxyz;xyz++) {
-                lvl[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
                 gwbmask[xyz] = mainmask[xyz];
                 if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
-            }
-            gwbImage = adjustLevelset(gwbImage, lvl);
-            
+            }            
             for (int t=0;t<repeats;t++) {
                 
                 System.out.println("repeat "+(t+1));
                 
                 // Run the adjustment for gwb
-                lvl = fitJointBoundarySigmoid(gwbImage, iterations, gwbContrastTypes, gwbmask);
-                gwbImage = adjustLevelset(gwbImage, lvl);
+                lvl1 = fitJointBoundarySigmoid(gwbImage, iterations, gwbContrastTypes, gwbmask);
+                gwbImage = adjustLevelset(gwbImage, lvl1);
             }
             
             System.out.println("pair "+(p+1)+": CGB");
             
-            // Push cgb boundary outward from gwb
-            boolean[] cgbmask = new boolean[nxyz];
             for (int xyz=0;xyz<nxyz;xyz++) {
-                lvl[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
                 cgbmask[xyz] = mainmask[xyz];
                 if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
-            }
-            cgbImage = adjustLevelset(cgbImage, lvl);
-            
+            }                
             for (int t=0;t<repeats;t++) {
                 
                 System.out.println("repeat "+(t+1));
             
                 // Run the adjustment for cgb
-                lvl = fitJointBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
-                cgbImage = adjustLevelset(cgbImage, lvl);
+                lvl2 = fitJointBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
+                cgbImage = adjustLevelset(cgbImage, lvl2);
             }
         }
 		
