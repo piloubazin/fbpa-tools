@@ -145,7 +145,7 @@ public class CorticalBoundaryAdjustment {
                 gwbmask[xyz] = mainmask[xyz];
                 if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
             }
-            adjustLevelset(gwbImage, lvl);
+            gwbImage = adjustLevelset(gwbImage, lvl);
             
             for (int t=0;t<repeats;t++) {
                 
@@ -153,7 +153,7 @@ public class CorticalBoundaryAdjustment {
                 
                 // Run the adjustment for gwb
                 lvl = fitJointBoundarySigmoid(gwbImage, iterations, gwbContrastTypes, gwbmask);
-                adjustLevelset(gwbImage, lvl);
+                gwbImage = adjustLevelset(gwbImage, lvl);
             }
             
             System.out.println("pair "+(p+1)+": CGB");
@@ -165,7 +165,7 @@ public class CorticalBoundaryAdjustment {
                 cgbmask[xyz] = mainmask[xyz];
                 if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
             }
-            adjustLevelset(cgbImage, lvl);
+            cgbImage = adjustLevelset(cgbImage, lvl);
             
             for (int t=0;t<repeats;t++) {
                 
@@ -173,7 +173,7 @@ public class CorticalBoundaryAdjustment {
             
                 // Run the adjustment for cgb
                 lvl = fitJointBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
-                adjustLevelset(cgbImage, lvl);
+                cgbImage = adjustLevelset(cgbImage, lvl);
             }
         }
 		
@@ -231,7 +231,7 @@ public class CorticalBoundaryAdjustment {
                 gwbmask[xyz] = mainmask[xyz];
                 if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
             }
-            adjustLevelset(gwbImage, lvl);
+            gwbImage = adjustLevelset(gwbImage, lvl);
             
             // precompute super-voxel parcels (different for each mask)
             int[] parcel = supervoxelParcellation(contrastImages[0], gwbmask, Numerics.ceil(distance), noiseRatio);
@@ -242,7 +242,7 @@ public class CorticalBoundaryAdjustment {
                 
                 // Run the adjustment for gwb
                 lvl = fitSupervoxelBoundarySigmoid(gwbImage, parcel, iterations, gwbContrastTypes, gwbmask);
-                adjustLevelset(gwbImage, lvl);
+                gwbImage = adjustLevelset(gwbImage, lvl);
             }
             
             System.out.println("pair "+(p+1)+": CGB");
@@ -254,7 +254,7 @@ public class CorticalBoundaryAdjustment {
                 cgbmask[xyz] = mainmask[xyz];
                 if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
             }
-            adjustLevelset(cgbImage, lvl);
+            cgbImage = adjustLevelset(cgbImage, lvl);
             
             // precompute super-voxel parcels (different for each mask)
             parcel = supervoxelParcellation(contrastImages[0], cgbmask, Numerics.ceil(distance), noiseRatio);
@@ -265,7 +265,7 @@ public class CorticalBoundaryAdjustment {
             
                 // Run the adjustment for cgb
                 lvl = fitSupervoxelBoundarySigmoid(cgbImage, parcel, iterations, cgbContrastTypes, cgbmask);
-                adjustLevelset(cgbImage, lvl);
+                cgbImage = adjustLevelset(cgbImage, lvl);
             }
         }
 		
@@ -704,7 +704,7 @@ public class CorticalBoundaryAdjustment {
         return offlevel;
     }
 
-    void adjustLevelset(float[] source, float[] target) {
+    float[] adjustLevelset(float[] source, float[] target) {
         
         Gdm3d gdm = new Gdm3d(source, distance+2.0f, nx, ny, nz, rx, ry, rz,
 						null, null, target, 0.0f, 0.0f, smoothness, 1.0f-smoothness,
@@ -712,7 +712,7 @@ public class CorticalBoundaryAdjustment {
 		
 		gdm.evolveNarrowBand(50, 0.01f);
 		
-		source = gdm.getLevelSet();
+		return gdm.getLevelSet();
     }
 
     int[] supervoxelParcellation(float[] image, boolean[] mask, int scaling, float noise) {
