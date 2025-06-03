@@ -152,7 +152,7 @@ public class CorticalBoundaryAdjustment {
                 System.out.println("repeat "+(t+1));
                 
                 // Run the adjustment for gwb
-                lvl = fitBasicBoundarySigmoid(gwbImage, iterations, gwbContrastTypes, gwbmask);
+                lvl = fitJointBoundarySigmoid(gwbImage, iterations, gwbContrastTypes, gwbmask);
                 adjustLevelset(gwbImage, lvl);
             }
             
@@ -172,7 +172,7 @@ public class CorticalBoundaryAdjustment {
                 System.out.println("repeat "+(t+1));
             
                 // Run the adjustment for cgb
-                lvl = fitBasicBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
+                lvl = fitJointBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
                 adjustLevelset(cgbImage, lvl);
             }
         }
