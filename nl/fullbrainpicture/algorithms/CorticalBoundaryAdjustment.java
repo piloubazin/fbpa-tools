@@ -132,20 +132,20 @@ public class CorticalBoundaryAdjustment {
         boolean[] gwbmask = new boolean[nxyz];
         boolean[] cgbmask = new boolean[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
-            //lvl1[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
-            //lvl2[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
-            lvl1[xyz] = gwbImage[xyz]+gwboffset;
-            lvl2[xyz] = cgbImage[xyz]+cgboffset;
+            lvl1[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
+            lvl2[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
+            //lvl1[xyz] = gwbImage[xyz]+gwboffset;
+            //lvl2[xyz] = cgbImage[xyz]+cgboffset;
             gwbmask[xyz] = mainmask[xyz];
             if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
             cgbmask[xyz] = mainmask[xyz];
             if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
             // direct copy for debug
-            gwbImage[xyz] = lvl1[xyz];
-            cgbImage[xyz] = lvl2[xyz];
+            //gwbImage[xyz] = lvl1[xyz];
+            //cgbImage[xyz] = lvl2[xyz];
         }
-        //gwbImage = adjustLevelset(gwbImage, lvl1);
-        //cgbImage = adjustLevelset(cgbImage, lvl2);
+        gwbImage = adjustLevelset(gwbImage, lvl1);
+        cgbImage = adjustLevelset(cgbImage, lvl2);
 		
 		// labeling, assuming gwb inside cgb
         float[] output = new float[nxyz];
