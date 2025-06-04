@@ -138,9 +138,12 @@ public class CorticalBoundaryAdjustment {
             if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
             cgbmask[xyz] = mainmask[xyz];
             if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
+            // direct copy for debug
+            gwbImage[xyz] = lvl1[xyz];
+            cgbImage[xyz] = lvl2[xyz];
         }
-        gwbImage = adjustLevelset(gwbImage, lvl1);
-        cgbImage = adjustLevelset(cgbImage, lvl2);
+        //gwbImage = adjustLevelset(gwbImage, lvl1);
+        //cgbImage = adjustLevelset(cgbImage, lvl2);
 		
 		// labeling, assuming gwb inside cgb
         float[] output = new float[nxyz];
