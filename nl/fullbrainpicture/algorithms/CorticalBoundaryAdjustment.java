@@ -132,8 +132,10 @@ public class CorticalBoundaryAdjustment {
         boolean[] gwbmask = new boolean[nxyz];
         boolean[] cgbmask = new boolean[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
-            lvl1[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
-            lvl2[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
+            //lvl1[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
+            //lvl2[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
+            lvl1[xyz] = gwbImage[xyz]+gwboffset;
+            lvl2[xyz] = cgbImage[xyz]+cgboffset;
             gwbmask[xyz] = mainmask[xyz];
             if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
             cgbmask[xyz] = mainmask[xyz];
@@ -466,6 +468,10 @@ public class CorticalBoundaryAdjustment {
                             }
                         }
                     }
+                    if (incount[c]>0 && excount[c]>0) {
+                        interior[c] /= incount[c];
+                        exterior[c] /= excount[c];
+                    }
                     float inbound = 0.0f;
                     float exbound = 0.0f;
                     float bdcount = 0.0f;
@@ -483,8 +489,6 @@ public class CorticalBoundaryAdjustment {
                             for (int c=0;c<nc;c++) {
                                 // skip if one is empty
                                 if (incount[c]>0 && excount[c]>0) {
-                                    interior[c] /= incount[c];
-                                    exterior[c] /= excount[c];
                                     
                                     // only take into account correct contrast values
                                     if ( (contrastTypes[c]==INCREASING && exterior[c]>interior[c]) 
@@ -505,7 +509,8 @@ public class CorticalBoundaryAdjustment {
                                     }
                                 }
                             }
-                            if (count>0) {
+                            // we only use regions where there is correct variation in all contrasts
+                            if (count==nc) {
                 
                                 inbound += oldlevel[dxyz]*wgtx*wgtin;
                                 inwgt += wgtx*wgtin;
