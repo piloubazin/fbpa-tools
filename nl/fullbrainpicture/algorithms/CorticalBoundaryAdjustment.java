@@ -468,9 +468,11 @@ public class CorticalBoundaryAdjustment {
                             }
                         }
                     }
-                    if (incount[c]>0 && excount[c]>0) {
-                        interior[c] /= incount[c];
-                        exterior[c] /= excount[c];
+                    for (int c=0;c<nc;c++) {
+                        if (incount[c]>0 && excount[c]>0) {
+                            interior[c] /= incount[c];
+                            exterior[c] /= excount[c];
+                        }
                     }
                     float inbound = 0.0f;
                     float exbound = 0.0f;
