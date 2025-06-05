@@ -355,6 +355,12 @@ public class CorticalBoundaryAdjustment {
                             }
                         }
                     }
+                    for (int c=0;c<nc;c++) {
+                        if (incount[c]>0 && excount[c]>0) {
+                            interior[c] /= incount[c];
+                            exterior[c] /= excount[c];
+                        }
+                    }
                     float inbound = 0.0f;
                     float exbound = 0.0f;
                     float bdcount = 0.0f;
@@ -363,8 +369,6 @@ public class CorticalBoundaryAdjustment {
                     for (int c=0;c<nc;c++) {
                         // skip if one is empty
                         if (incount[c]>0 && excount[c]>0) {
-                            interior[c] /= incount[c];
-                            exterior[c] /= excount[c];
                             
                             // only take into account correct contrast values
                             if ( (contrastTypes[c]==INCREASING && exterior[c]>interior[c]) 
