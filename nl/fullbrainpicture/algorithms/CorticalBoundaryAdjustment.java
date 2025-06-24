@@ -43,6 +43,7 @@ public class CorticalBoundaryAdjustment {
 	private String connectivity="no";
 	private float sampleRatio = 0.01f;
 	private float lvlRatio = 0.5f;
+	private float stopDist = 0.01f;
 	
 	// supervoxel stuff
 	int nsx,nsy,nsz,nsxyz;
@@ -106,6 +107,7 @@ public class CorticalBoundaryAdjustment {
 	public final void setConnectivity(String val) { connectivity = val; }
 	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
 	public final void setNoiseRatio(float val) { noiseRatio = val; }
+	public final void setStoppingDistance(float val) { stopDist = val; }
 	
 	// create outputs
 	public final float[] getGwbLevelsetImage() { return gwbImage; }
@@ -184,6 +186,108 @@ public class CorticalBoundaryAdjustment {
             
                 // Run the adjustment for cgb
                 lvl2 = fitJointBoundarySigmoid(cgbImage, iterations, cgbContrastTypes, cgbmask);
+                cgbImage = adjustLevelset(cgbImage, lvl2);
+            }
+        }
+		
+        for (int xyz=0;xyz<nxyz;xyz++) {
+                 if (gwbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 8.0f;
+            else if (gwbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 7.0f;
+            else if (gwbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 6.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 5.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 4.0f;
+            else if (cgbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 3.0f;
+            else if (output[xyz]==2.0f) output[xyz] = 2.0f;
+            else if (output[xyz]==1.0f) output[xyz] = 1.0f;
+            else output[xyz] = 0.0f;
+        }
+        
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            gwbImage[xyz] = Numerics.bounded(gwbImage[xyz],-distance-minthickness, distance+minthickness);
+            cgbImage[xyz] = Numerics.bounded(cgbImage[xyz],-distance-minthickness, distance+minthickness);
+        }
+        
+        probaImage = output;
+	    return;
+	}
+	
+	public void executeFaster(){
+	    
+	    // make mask
+	    boolean[] mainmask = new boolean[nxyz];
+		for (int xyz=0;xyz<nxyz;xyz++) {
+		    mainmask[xyz] = true;
+		    for (int c=0;c<nc;c++) {
+		        if (contrastImages[c][xyz]==0) mainmask[xyz] = false;
+		    }
+		    if (maskImage!=null && maskImage[xyz]==0) mainmask[xyz] = false;
+		}
+		maskImage = null;
+	    
+        // Start with gwb, push boundary inward from cgb
+        // Push cgb boundary outward from gwb
+        float[] lvl1 = new float[nxyz];
+        float[] lvl2 = new float[nxyz];
+        boolean[] gwbmask = new boolean[nxyz];
+        boolean[] cgbmask = new boolean[nxyz];
+        float[] off1 = new float[nxyz];
+        float[] off2 = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            lvl1[xyz] = Numerics.max(gwbImage[xyz]+gwboffset, cgbImage[xyz]+minthickness);
+            lvl2[xyz] = Numerics.min(cgbImage[xyz]+cgboffset, gwbImage[xyz]-minthickness);
+            //lvl1[xyz] = gwbImage[xyz]+gwboffset;
+            //lvl2[xyz] = cgbImage[xyz]+cgboffset;
+            gwbmask[xyz] = mainmask[xyz];
+            if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
+            cgbmask[xyz] = mainmask[xyz];
+            if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
+            // direct copy for debug
+            //gwbImage[xyz] = lvl1[xyz];
+            //cgbImage[xyz] = lvl2[xyz];
+            // offset between previous and new estimate, to skip stable regions
+            off1[xyz] = gwboffset+1.0f;
+            off2[xyz] = cgboffset+1.0f;
+        }
+        gwbImage = adjustLevelset(gwbImage, lvl1);
+        cgbImage = adjustLevelset(cgbImage, lvl2);
+		
+		// labeling, assuming gwb inside cgb
+        float[] output = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) {
+            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2.0f;
+            else if (cgbImage[xyz]<0) output[xyz] = 1.0f;
+            else output[xyz] = 0.0f;
+        }
+
+        for (int p=0;p<pairs;p++) {
+
+            System.out.println("pair "+(p+1)+": GWB");
+                
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                gwbmask[xyz] = mainmask[xyz];
+                if (cgbImage[xyz]>-maskthickness) gwbmask[xyz] = false;
+            }            
+            for (int t=0;t<repeats;t++) {
+                
+                System.out.println("repeat "+(t+1));
+                
+                // Run the adjustment for gwb
+                lvl1 = fitJointFasterBoundarySigmoid(gwbImage, off1, iterations, gwbContrastTypes, gwbmask);
+                gwbImage = adjustLevelset(gwbImage, lvl1);
+            }
+            
+            System.out.println("pair "+(p+1)+": CGB");
+            
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                cgbmask[xyz] = mainmask[xyz];
+                if (gwbImage[xyz]<maskthickness) cgbmask[xyz] = false;
+            }                
+            for (int t=0;t<repeats;t++) {
+                
+                System.out.println("repeat "+(t+1));
+            
+                // Run the adjustment for cgb
+                lvl2 = fitJointFasterBoundarySigmoid(cgbImage, off2, iterations, cgbContrastTypes, cgbmask);
                 cgbImage = adjustLevelset(cgbImage, lvl2);
             }
         }
@@ -538,6 +642,134 @@ public class CorticalBoundaryAdjustment {
                 }
             }
             System.out.println(" max difference: "+maxdiff);
+        }
+        return newlevel;
+    }
+
+	public float[] fitJointFasterBoundarySigmoid(float[] levelset, float[] off, int iter, byte[] contrastTypes, boolean[] mask) {
+
+	    float delta = 0.001f;
+	    float dist0 = 2.0f;
+	    
+	    int dist = Numerics.ceil(distance);
+	    
+	    // go over voxels close enough to the boundary
+	    float[] newlevel = new float[nxyz];
+	    float[] oldlevel = new float[nxyz];
+	    
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        newlevel[xyz] = levelset[xyz];
+	    }
+
+	    for (int t=0;t<iter;t++) {
+	        System.out.println("iteration "+(t+1));
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                oldlevel[xyz] = newlevel[xyz];
+            }
+            float maxdiff = 0.0f;
+            int ncount=0;
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                
+                if (mask[xyz] && Numerics.abs(oldlevel[xyz])<spread && off[xyz]>stopDist) {
+                    
+                    // grow region
+                    float[] interior = new float[nc];
+                    float[] incount = new float[nc];
+                    float[] exterior = new float[nc];
+                    float[] excount = new float[nc];
+                    for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                        int dxyz = dx+nx*dy+nx*ny*dz;
+                        if (mask[dxyz]) {
+                            for (int c=0;c<nc;c++) {
+                                if ( (contrastTypes[c]==INCREASING && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                                               || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
+                                    || (contrastTypes[c]==DECREASING && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                                || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                    || (contrastTypes[c]==BOTH) ) {
+    
+                                    float win = - Numerics.bounded(oldlevel[dxyz]/dist0, -1.0f, 1.0f);
+                                    if (win<0) {
+                                        exterior[c] += win*win*contrastImages[c][dxyz];
+                                        excount[c] += win*win;
+                                    }
+                                    if (win>0) {
+                                        interior[c] += win*win*contrastImages[c][dxyz];
+                                        incount[c] += win*win;
+                                    }
+                                } 
+                            }
+                        }
+                    }
+                    for (int c=0;c<nc;c++) {
+                        if (incount[c]>0 && excount[c]>0) {
+                            interior[c] /= incount[c];
+                            exterior[c] /= excount[c];
+                        }
+                    }
+                    float inbound = 0.0f;
+                    float exbound = 0.0f;
+                    float bdcount = 0.0f;
+                    float inwgt = 0.0f;
+                    float exwgt = 0.0f;
+                    // offset as the location where probability in/out transition?
+                    for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                        int dxyz = dx+nx*dy+nx*ny*dz;
+                        if (mask[dxyz]) {
+                            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(oldlevel[dxyz]/dist0)), delta, 1.0f-delta);
+                            
+                            float wgtin=1.0f;
+                            float wgtex=1.0f;
+                            int count=0;
+                            for (int c=0;c<nc;c++) {
+                                // skip if one is empty
+                                if (incount[c]>0 && excount[c]>0) {
+                                    
+                                    // only take into account correct contrast values
+                                    if ( (contrastTypes[c]==INCREASING && exterior[c]>interior[c]) 
+                                        || (contrastTypes[c]==DECREASING && exterior[c]<interior[c])
+                                        || (contrastTypes[c]==BOTH) ) {
+                
+                                        if ( (contrastTypes[c]==INCREASING && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                                                       || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
+                                            || (contrastTypes[c]==DECREASING && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                                        || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                            || (contrastTypes[c]==BOTH) ) {
+                            
+                                            // to check??
+                                            wgtin *= Numerics.bounded((contrastImages[c][dxyz]-interior[c])/(exterior[c]-interior[c]), delta, 1.0f-delta);
+                                            wgtex *= Numerics.bounded((exterior[c]-contrastImages[c][dxyz])/(exterior[c]-interior[c]), delta, 1.0f-delta);
+                                            count++;
+                                        }
+                                    }
+                                }
+                            }
+                            // we only use regions where there is correct variation in all contrasts
+                            if (count==nc) {
+                
+                                inbound += oldlevel[dxyz]*wgtx*wgtin;
+                                inwgt += wgtx*wgtin;
+                
+                                exbound += oldlevel[dxyz]*wgtx*wgtex;
+                                exwgt += wgtx*wgtex;
+                                
+                                bdcount += wgtx;
+                            }
+                        }
+                    }
+                    // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
+                    if (bdcount>0) {
+                        float offset = 0.5f*(inbound/bdcount + exbound/bdcount)/(inwgt/bdcount + exwgt/bdcount);
+                        newlevel[xyz] = levelset[xyz]-offset;
+                        
+                        maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
+                        off[xyz] = Numerics.abs(offset);
+                        ncount++;
+                    }
+                }
+            }
+            System.out.println(" max difference: "+maxdiff);
+            System.out.println(" active boundary points: "+ncount);
         }
         return newlevel;
     }
