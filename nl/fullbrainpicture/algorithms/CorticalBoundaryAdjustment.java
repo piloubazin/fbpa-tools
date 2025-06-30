@@ -667,6 +667,7 @@ public class CorticalBoundaryAdjustment {
                 oldlevel[xyz] = newlevel[xyz];
             }
             float maxdiff = 0.0f;
+            float meandiff = 0.0f;
             int ncount=0;
             for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
                 int xyz = x+nx*y+nx*ny*z;
@@ -764,10 +765,13 @@ public class CorticalBoundaryAdjustment {
                         
                         maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
                         off[xyz] = Numerics.abs(offset);
+                        
+                        meandiff += Numerics.abs(offset);
                         ncount++;
                     }
                 }
             }
+            System.out.println(" mean difference: "+meandiff/ncount);
             System.out.println(" max difference: "+maxdiff);
             System.out.println(" active boundary points: "+ncount);
         }
