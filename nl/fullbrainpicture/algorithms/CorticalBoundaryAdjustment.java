@@ -296,7 +296,7 @@ public class CorticalBoundaryAdjustment {
 
         // uncertainty measure (based on local CNR at boundary)
 		probaImage = new float[nxyz];
-        for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 1.0f;
+        for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 0.0f;
         assessJointFasterBoundarySigmoid(probaImage, gwbImage, gwbContrastTypes, gwbmask);
         assessJointFasterBoundarySigmoid(probaImage, cgbImage, cgbContrastTypes, cgbmask);
 
@@ -1519,7 +1519,8 @@ public class CorticalBoundaryAdjustment {
                 for (int c=0;c<nc;c++) {
                     if (incount[c]>0 && excount[c]>0) {
                         float cnr = 2.0f*Numerics.abs(interior[c]-exterior[c])/(instdev[c]+exstdev[c]);
-                        proba[xyz] = Numerics.min(proba[xyz], Numerics.min(0.5f*cnr,1.0f));
+                        //proba[xyz] = Numerics.min(proba[xyz], Numerics.min(0.5f*cnr,1.0f));
+                        proba[xyz] = Numerics.max(proba[xyz], cnr);
                     }
                 }
             }
