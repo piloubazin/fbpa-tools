@@ -50,6 +50,7 @@ public class CorticalBoundaryAdjustment {
 	float noiseRatio = 0.1f;
 	
 	private float[] probaImage;
+	private int[] segImage;
 	
 	// numerical quantities
 	private static final	float	INVSQRT2 = (float)(1.0/FastMath.sqrt(2.0));
@@ -112,6 +113,7 @@ public class CorticalBoundaryAdjustment {
 	// create outputs
 	public final float[] getGwbLevelsetImage() { return gwbImage; }
 	public final float[] getCgbLevelsetImage() { return cgbImage; }
+	public final int[] getSegmentationImage() { return segImage; }
 	public final float[] getProbaImage() { return probaImage; }
 	
 	public void executeLocal(){
@@ -150,11 +152,11 @@ public class CorticalBoundaryAdjustment {
         cgbImage = adjustLevelset(cgbImage, lvl2);
 		
 		// labeling, assuming gwb inside cgb
-        float[] output = new float[nxyz];
+        int[] output = new int[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
-            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2.0f;
-            else if (cgbImage[xyz]<0) output[xyz] = 1.0f;
-            else output[xyz] = 0.0f;
+            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2;
+            else if (cgbImage[xyz]<0) output[xyz] = 1;
+            else output[xyz] = 0;
         }
 
         for (int p=0;p<pairs;p++) {
@@ -191,15 +193,15 @@ public class CorticalBoundaryAdjustment {
         }
 		
         for (int xyz=0;xyz<nxyz;xyz++) {
-                 if (gwbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 8.0f;
-            else if (gwbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 7.0f;
-            else if (gwbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 6.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 5.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 4.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 3.0f;
-            else if (output[xyz]==2.0f) output[xyz] = 2.0f;
-            else if (output[xyz]==1.0f) output[xyz] = 1.0f;
-            else output[xyz] = 0.0f;
+                 if (gwbImage[xyz]<0 && output[xyz]==2) output[xyz] = 8;
+            else if (gwbImage[xyz]<0 && output[xyz]==1) output[xyz] = 7;
+            else if (gwbImage[xyz]<0 && output[xyz]==0) output[xyz] = 6;
+            else if (cgbImage[xyz]<0 && output[xyz]==2) output[xyz] = 5;
+            else if (cgbImage[xyz]<0 && output[xyz]==1) output[xyz] = 4;
+            else if (cgbImage[xyz]<0 && output[xyz]==0) output[xyz] = 3;
+            else if (output[xyz]==2) output[xyz] = 2;
+            else if (output[xyz]==1) output[xyz] = 1;
+            else output[xyz] = 0;
         }
         
         for (int xyz=0;xyz<nxyz;xyz++) {
@@ -207,7 +209,7 @@ public class CorticalBoundaryAdjustment {
             cgbImage[xyz] = Numerics.bounded(cgbImage[xyz],-distance-minthickness, distance+minthickness);
         }
         
-        probaImage = output;
+        segImage = output;
 	    return;
 	}
 	
@@ -252,11 +254,11 @@ public class CorticalBoundaryAdjustment {
         cgbImage = adjustLevelset(cgbImage, lvl2);
 		
 		// labeling, assuming gwb inside cgb
-        float[] output = new float[nxyz];
+        int[] output = new int[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
-            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2.0f;
-            else if (cgbImage[xyz]<0) output[xyz] = 1.0f;
-            else output[xyz] = 0.0f;
+            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2;
+            else if (cgbImage[xyz]<0) output[xyz] = 1;
+            else output[xyz] = 0;
         }
 
         for (int p=0;p<pairs;p++) {
@@ -291,17 +293,23 @@ public class CorticalBoundaryAdjustment {
                 cgbImage = adjustLevelset(cgbImage, lvl2);
             }
         }
-		
+
+        // uncertainty measure (based on local CNR at boundary)
+		probaImage = new float[nxyz];
+        for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 1.0f;
+        assessJointFasterBoundarySigmoid(probaImage, gwbImage, gwbContrastTypes, gwbmask);
+        assessJointFasterBoundarySigmoid(probaImage, cgbImage, cgbContrastTypes, cgbmask);
+
         for (int xyz=0;xyz<nxyz;xyz++) {
-                 if (gwbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 8.0f;
-            else if (gwbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 7.0f;
-            else if (gwbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 6.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 5.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 4.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 3.0f;
-            else if (output[xyz]==2.0f) output[xyz] = 2.0f;
-            else if (output[xyz]==1.0f) output[xyz] = 1.0f;
-            else output[xyz] = 0.0f;
+                 if (gwbImage[xyz]<0 && output[xyz]==2) output[xyz] = 8;
+            else if (gwbImage[xyz]<0 && output[xyz]==1) output[xyz] = 7;
+            else if (gwbImage[xyz]<0 && output[xyz]==0) output[xyz] = 6;
+            else if (cgbImage[xyz]<0 && output[xyz]==2) output[xyz] = 5;
+            else if (cgbImage[xyz]<0 && output[xyz]==1) output[xyz] = 4;
+            else if (cgbImage[xyz]<0 && output[xyz]==0) output[xyz] = 3;
+            else if (output[xyz]==2) output[xyz] = 2;
+            else if (output[xyz]==1) output[xyz] = 1;
+            else output[xyz] = 0;
         }
         
         for (int xyz=0;xyz<nxyz;xyz++) {
@@ -309,7 +317,8 @@ public class CorticalBoundaryAdjustment {
             cgbImage[xyz] = Numerics.bounded(cgbImage[xyz],-distance-minthickness, distance+minthickness);
         }
         
-        probaImage = output;
+        segImage = output;
+        
 	    return;
 	}
 	
@@ -327,11 +336,11 @@ public class CorticalBoundaryAdjustment {
 		maskImage = null;
 		
 		// labeling, assuming gwb inside cgb
-        float[] output = new float[nxyz];
+        int[] output = new int[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) {
-            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2.0f;
-            else if (cgbImage[xyz]<0) output[xyz] = 1.0f;
-            else output[xyz] = 0.0f;
+            if (gwbImage[xyz]<0 && cgbImage[xyz]<0) output[xyz] = 2;
+            else if (cgbImage[xyz]<0) output[xyz] = 1;
+            else output[xyz] = 0;
         }
 
         float[] lvl = new float[nxyz];
@@ -385,15 +394,15 @@ public class CorticalBoundaryAdjustment {
         }
 		
         for (int xyz=0;xyz<nxyz;xyz++) {
-                 if (gwbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 8.0f;
-            else if (gwbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 7.0f;
-            else if (gwbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 6.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==2.0f) output[xyz] = 5.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==1.0f) output[xyz] = 4.0f;
-            else if (cgbImage[xyz]<0 && output[xyz]==0.0f) output[xyz] = 3.0f;
-            else if (output[xyz]==2.0f) output[xyz] = 2.0f;
-            else if (output[xyz]==1.0f) output[xyz] = 1.0f;
-            else output[xyz] = 0.0f;
+                 if (gwbImage[xyz]<0 && output[xyz]==2) output[xyz] = 8;
+            else if (gwbImage[xyz]<0 && output[xyz]==1) output[xyz] = 7;
+            else if (gwbImage[xyz]<0 && output[xyz]==0) output[xyz] = 6;
+            else if (cgbImage[xyz]<0 && output[xyz]==2) output[xyz] = 5;
+            else if (cgbImage[xyz]<0 && output[xyz]==1) output[xyz] = 4;
+            else if (cgbImage[xyz]<0 && output[xyz]==0) output[xyz] = 3;
+            else if (output[xyz]==2) output[xyz] = 2;
+            else if (output[xyz]==1) output[xyz] = 1;
+            else output[xyz] = 0;
         }
         
         for (int xyz=0;xyz<nxyz;xyz++) {
@@ -401,7 +410,7 @@ public class CorticalBoundaryAdjustment {
             cgbImage[xyz] = Numerics.bounded(cgbImage[xyz],-distance-minthickness, distance+minthickness);
         }
         
-        probaImage = output;
+        segImage = output;
 	    return;
 	}
 	
@@ -1427,5 +1436,95 @@ public class CorticalBoundaryAdjustment {
 		}
 	}
 
+	
+	private void assessJointFasterBoundarySigmoid(float[] proba, float[] levelset, byte[] contrastTypes, boolean[] mask) {
+
+	    float delta = 0.001f;
+	    float dist0 = 2.0f;
+	    
+	    int dist = Numerics.ceil(distance);
+	    
+        float maxdiff = 0.0f;
+        float meandiff = 0.0f;
+        int ncount=0;
+        for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+            int xyz = x+nx*y+nx*ny*z;
+            
+            if (mask[xyz] && Numerics.abs(levelset[xyz])<spread) {
+                
+                // grow region
+                float[] interior = new float[nc];
+                float[] instdev = new float[nc];
+                float[] incount = new float[nc];
+                float[] exterior = new float[nc];
+                float[] exstdev = new float[nc];
+                float[] excount = new float[nc];
+                for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                    int dxyz = dx+nx*dy+nx*ny*dz;
+                    if (mask[dxyz]) {
+                        for (int c=0;c<nc;c++) {
+                            if ( (contrastTypes[c]==INCREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                                           || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==DECREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                            || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==BOTH) ) {
+
+                                float win = - Numerics.bounded(levelset[dxyz]/dist0, -1.0f, 1.0f);
+                                if (win<0) {
+                                    exterior[c] += win*win*contrastImages[c][dxyz];
+                                    excount[c] += win*win;
+                                }
+                                if (win>0) {
+                                    interior[c] += win*win*contrastImages[c][dxyz];
+                                    incount[c] += win*win;
+                                }
+                            } 
+                        }
+                    }
+                }
+                for (int c=0;c<nc;c++) {
+                    if (incount[c]>0 && excount[c]>0) {
+                        interior[c] /= incount[c];
+                        exterior[c] /= excount[c];
+                    }
+                }
+                for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                    int dxyz = dx+nx*dy+nx*ny*dz;
+                    if (mask[dxyz]) {
+                        for (int c=0;c<nc;c++) {
+                            if ( (contrastTypes[c]==INCREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                                           || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==DECREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                            || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                || (contrastTypes[c]==BOTH) ) {
+
+                                float win = - Numerics.bounded(levelset[dxyz]/dist0, -1.0f, 1.0f);
+                                if (win<0) {
+                                    exstdev[c] += win*win*(contrastImages[c][dxyz]-exterior[c]);
+                                }
+                                if (win>0) {
+                                    instdev[c] += win*win*(contrastImages[c][dxyz]-interior[c]);
+                                }
+                            } 
+                        }
+                    }
+                }
+                for (int c=0;c<nc;c++) {
+                    if (incount[c]>0 && excount[c]>0) {
+                        instdev[c] = (float)FastMath.sqrt(instdev[c]/incount[c]);
+                        exstdev[c] = (float)FastMath.sqrt(exstdev[c]/excount[c]);
+                    }
+                }
+                // estimate confidence as a function of CNR
+                for (int c=0;c<nc;c++) {
+                    if (incount[c]>0 && excount[c]>0) {
+                        float cnr = 2.0f*Numerics.abs(interior[c]-exterior[c])/(instdev[c]+exstdev[c]);
+                        proba[xyz] = Numerics.min(proba[xyz], Numerics.min(0.5f*cnr,1.0f));
+                    }
+                }
+            }
+        }
+        return;
+    }
 
 }
