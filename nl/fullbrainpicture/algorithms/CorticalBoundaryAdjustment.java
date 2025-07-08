@@ -1492,20 +1492,22 @@ public class CorticalBoundaryAdjustment {
                     int dxyz = dx+nx*dy+nx*ny*dz;
                     if (mask[dxyz]) {
                         for (int c=0;c<nc;c++) {
-                            if ( (contrastTypes[c]==INCREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
-                                                           || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
-                                || (contrastTypes[c]==DECREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
-                                                            || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
-                                || (contrastTypes[c]==BOTH) ) {
-
-                                float win = - Numerics.bounded(levelset[dxyz]/dist0, -1.0f, 1.0f);
-                                if (win<0) {
-                                    exstdev[c] += win*win*(contrastImages[c][dxyz]-exterior[c]);
+                            if (incount[c]>0 && excount[c]>0) {
+                                if ( (contrastTypes[c]==INCREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                                               || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) 
+                                    || (contrastTypes[c]==DECREASING && ( (levelset[dxyz]>levelset[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                                || (levelset[dxyz]<=levelset[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) 
+                                    || (contrastTypes[c]==BOTH) ) {
+    
+                                    float win = - Numerics.bounded(levelset[dxyz]/dist0, -1.0f, 1.0f);
+                                    if (win<0) {
+                                        exstdev[c] += win*win*(contrastImages[c][dxyz]-exterior[c])*(contrastImages[c][dxyz]-exterior[c]);
+                                    }
+                                    if (win>0) {
+                                        instdev[c] += win*win*(contrastImages[c][dxyz]-interior[c])*(contrastImages[c][dxyz]-interior[c]);
+                                    }
                                 }
-                                if (win>0) {
-                                    instdev[c] += win*win*(contrastImages[c][dxyz]-interior[c]);
-                                }
-                            } 
+                            }
                         }
                     }
                 }
@@ -1519,8 +1521,8 @@ public class CorticalBoundaryAdjustment {
                 for (int c=0;c<nc;c++) {
                     if (incount[c]>0 && excount[c]>0) {
                         float cnr = 2.0f*Numerics.abs(interior[c]-exterior[c])/(instdev[c]+exstdev[c]);
-                        //proba[xyz] = Numerics.min(proba[xyz], Numerics.min(0.5f*cnr,1.0f));
-                        proba[xyz] = Numerics.max(proba[xyz], cnr);
+                        if (proba[xyz]==0) proba[xyz] = cnr;
+                        else proba[xyz] = Numerics.min(proba[xyz], cnr);
                     }
                 }
             }
