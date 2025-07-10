@@ -44,6 +44,7 @@ public class CorticalBoundaryAdjustment {
 	private float sampleRatio = 0.01f;
 	private float lvlRatio = 0.5f;
 	private float stopDist = 0.01f;
+	private float meancnr = 4.0f;
 	
 	// supervoxel stuff
 	int nsx,nsy,nsz,nsxyz;
@@ -109,6 +110,7 @@ public class CorticalBoundaryAdjustment {
 	public final void setTopologyLUTdirectory(String val) { lutdir = val; }
 	public final void setNoiseRatio(float val) { noiseRatio = val; }
 	public final void setStoppingDistance(float val) { stopDist = val; }
+	public final void setMeanCNR(float val) { meancnr = val; }
 	
 	// create outputs
 	public final float[] getGwbLevelsetImage() { return gwbImage; }
@@ -297,8 +299,8 @@ public class CorticalBoundaryAdjustment {
         // uncertainty measure (based on local CNR at boundary)
 		probaImage = new float[nxyz];
         for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 0.0f;
-        assessJointFasterBoundarySigmoid(probaImage, gwbImage, gwbContrastTypes, gwbmask);
-        assessJointFasterBoundarySigmoid(probaImage, cgbImage, cgbContrastTypes, cgbmask);
+        assessJointFasterBoundarySigmoid(probaImage, gwbImage, gwbContrastTypes, gwbmask, meancnr);
+        assessJointFasterBoundarySigmoid(probaImage, cgbImage, cgbContrastTypes, cgbmask, meancnr);
 
         for (int xyz=0;xyz<nxyz;xyz++) {
                  if (gwbImage[xyz]<0 && output[xyz]==2) output[xyz] = 8;
@@ -1437,7 +1439,7 @@ public class CorticalBoundaryAdjustment {
 	}
 
 	
-	private void assessJointFasterBoundarySigmoid(float[] proba, float[] levelset, byte[] contrastTypes, boolean[] mask) {
+	private void assessJointFasterBoundarySigmoid(float[] proba, float[] levelset, byte[] contrastTypes, boolean[] mask, float meancnr) {
 
 	    float delta = 0.001f;
 	    float dist0 = 2.0f;
@@ -1525,8 +1527,11 @@ public class CorticalBoundaryAdjustment {
                         else proba[xyz] = Numerics.min(proba[xyz], cnr);
                     }
                 }
+                // make a simple distribution based on a simple Rayleigh model
+                proba[xyz] = 1.0f - (float)FastMath.exp( - proba[xyz]*proba[xyz]/(2.0*meancnr*meancnr));
             }
         }
+        
         return;
     }
 
