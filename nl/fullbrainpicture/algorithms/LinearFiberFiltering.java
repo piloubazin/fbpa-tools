@@ -95,7 +95,8 @@ public class LinearFiberFiltering {
 			probaImage = new float[nxyz];
 		}
 		
-		for (int xyz=0;xyz<nxyz;xyz++) {
+		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+		    int xyz = x+nx*y;
 			if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0) {
 				labelImage[xyz] = 111;
 				// thickness
