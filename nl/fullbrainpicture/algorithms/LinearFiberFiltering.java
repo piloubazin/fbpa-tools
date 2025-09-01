@@ -25,7 +25,7 @@ public class LinearFiberFiltering {
 	private float[] angles;
 	private float[] sizes;
 	
-	private static final boolean smooth=false;
+	private boolean smooth=false;
 	
 	// global variables
 	private int nx, ny, nz, nc, nxyz;
