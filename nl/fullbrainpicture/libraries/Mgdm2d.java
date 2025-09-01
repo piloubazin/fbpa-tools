@@ -371,7 +371,7 @@ public class Mgdm2d {
             balloonforces = new float[nx*ny];
             for (int xy = 0; xy<nx*ny; xy++) if (mask[xy]) if (mgdmfunctions[0][xy]>=0) {
                 // exponential decay
-                balloonforces[xy] = (float)FastMath.exp( -0.5*mgdmfunctions[0][xy]*mgdmfunctions[0][xy]/(balloonscale*balloonscale));
+                balloonforces[xy] = 1.0f-(float)FastMath.exp( -0.5*mgdmfunctions[0][xy]*mgdmfunctions[0][xy]/(balloonscale*balloonscale));
             }
             if (debug) System.out.print("done\n");		
         }
