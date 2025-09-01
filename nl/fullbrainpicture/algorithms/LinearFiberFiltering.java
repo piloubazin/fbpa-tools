@@ -26,6 +26,7 @@ public class LinearFiberFiltering {
 	private float[] sizes;
 	
 	private float smooth=1.0f;
+	private float scale=10.0f;
 	
 	// global variables
 	private int nx, ny, nz, nc, nxyz;
@@ -68,6 +69,7 @@ public class LinearFiberFiltering {
 	public final void setSizes(float[] val) { sizes = val; }
 	
 	public final void setSmooth(float val) { smooth = val; }
+	public final void setScale(float val) { scale = val; }
 	
 	// set generic inputs	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
@@ -89,7 +91,7 @@ public class LinearFiberFiltering {
 		labelImage = new int[nxyz];
 		
 		if (parcellationImage!=null) {
-			computeParcellationSurfaces(smooth);
+			computeParcellationSurfaces(smooth, scale);
 			probaImage = mgdmImage;
 		} else {
 			probaImage = new float[nxyz];
@@ -156,7 +158,7 @@ public class LinearFiberFiltering {
 	}
 	
 
-	private void computeParcellationSurfaces(float smooth) {
+	private void computeParcellationSurfaces(float smooth, float scale) {
 				
 		int nmgdm = 4;
 		int nlb =  ObjectLabeling.countLabels(parcellationImage, nx, ny, nz);
@@ -168,7 +170,7 @@ public class LinearFiberFiltering {
         Mgdm2d mgdm = new Mgdm2d(parcellationImage, nx, ny, nlb, nmgdm, rx, ry, null, 
                                 probaImage, parcellationImage,
                                 0.0f, 0.5f/(1.0f+smooth), 0.5f*smooth/(1.0f+smooth), 0.0f, 
-                                "no", null, true);
+                                "no", null, true, scale);
         
         if (smooth>0.0f) {
         	mgdm.evolveNarrowBand(500, 0.001f);

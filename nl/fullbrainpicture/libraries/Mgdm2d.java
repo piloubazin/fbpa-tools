@@ -6,6 +6,8 @@ import java.util.*;
 import nl.fullbrainpicture.structures.*;
 import nl.fullbrainpicture.utilities.*;
 
+import org.apache.commons.math3.util.FastMath;
+
 /**
  *
  *  This algorithm uses the MGDM framework to evolve a labeling
@@ -68,6 +70,7 @@ public class Mgdm2d {
 	private	float		lowlevel = 0.1f;
 	private float		landmineDist = 2.5f;
 	private	float		narrowBandDist = landmineDist+1.8f;
+	private float       balloonscale = 10.0f;
 	
 	// for debug and display
 	private static final boolean		debug=true;
@@ -139,7 +142,7 @@ public class Mgdm2d {
 						float[][] field_, float[] balloon_, int[] labels_,
 						float fw_, float bw_, float sw_, float pw_,
 						String connectivityType_, String lutdir_,
-						boolean extend_) {
+						boolean extend_, float bscale_) {
 	
 		fieldforce = field_;
 		balloonforces = balloon_;
@@ -162,6 +165,8 @@ public class Mgdm2d {
 		ry = ry_;
 		
 		lutdir = lutdir_;
+		
+		balloonscale = bscale_;
 		
 		objLabel = ObjectLabeling.listOrderedLabels(init_, nx, ny);
 		// note: we do expect that there are nb objects (not checked)
@@ -360,7 +365,18 @@ public class Mgdm2d {
         }
 		if (debug) System.out.print("done\n");		
 		
-       return;
+		// for labeling forces if the balloon forces are not specified
+		if (balloonforces==null) {
+            if (debug) System.out.print("create dummy balloon forces\n");	
+            balloonforces = new float[nx*ny];
+            for (int xy = 0; xy<nx*ny; xy++) if (mask[xy]) if (mgdmfunctions[0][xy]>=0) {
+                // exponential decay
+                balloonforces[xy] = (float)FastMath.exp( -0.5*mgdmfunctions[0][xy]*mgdmfunctions[0][xy]/(balloonscale*balloonscale));
+            }
+            if (debug) System.out.print("done\n");		
+        }
+        
+        return;
      }
      
      /**
