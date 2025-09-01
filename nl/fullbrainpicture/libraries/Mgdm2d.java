@@ -138,7 +138,8 @@ public class Mgdm2d {
 						float rx_, float ry_,
 						float[][] field_, float[] balloon_, int[] labels_,
 						float fw_, float bw_, float sw_, float pw_,
-						String connectivityType_, String lutdir_) {
+						String connectivityType_, String lutdir_
+						boolean extend_) {
 	
 		fieldforce = field_;
 		balloonforces = balloon_;
@@ -222,7 +223,7 @@ public class Mgdm2d {
 			else mask[x+nx*y] = false;
 		}
 		// init decomposition
-		fastMarchingInitializationFromSegmentation(init_);
+		fastMarchingInitializationFromSegmentation(init_,extend_);
 				
 		if (debug) System.out.print("initialization\n");
 	}
@@ -241,7 +242,7 @@ public class Mgdm2d {
 	
 	public final int[][] getLabels() { return mgdmlabels; }
     
-	public final void fastMarchingInitializationFromSegmentation(int[] init) {
+	public final void fastMarchingInitializationFromSegmentation(int[] init, boolean extend) {
          // initialize the quantities
          for (int xy = 0; xy<nx*ny; xy++) {
          	 // mgdm functions
@@ -332,7 +333,7 @@ public class Mgdm2d {
 						}
 						float newdist = minimumMarchingDistance(nbdist, nbflag);
 						
-						if (newdist<=narrowBandDist) {
+						if (newdist<=narrowBandDist || extend) {
 							// add to the heap
 							heap.addValue(newdist,xyn,lb);
 						}

@@ -168,7 +168,7 @@ public class LinearFiberFiltering {
         Mgdm2d mgdm = new Mgdm2d(parcellationImage, nx, ny, nlb, nmgdm, rx, ry, null, 
                                 probaImage, parcellationImage,
                                 0.0f, 0.1f, 0.4f, 0.0f, 
-                                "no", null);
+                                "no", null, true);
         
         if (smooth) {
         	mgdm.evolveNarrowBand(500, 0.001f);
