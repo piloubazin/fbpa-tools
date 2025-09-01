@@ -173,7 +173,7 @@ public class LinearFiberFiltering {
                                 "no", null, true, scale);
         
         if (smooth>0.0f) {
-        	mgdm.evolveNarrowBand(500, 0.001f);
+        	mgdm.evolveNarrowBand(800, 0.0001f);
         }
         
         // 4. copy the results
