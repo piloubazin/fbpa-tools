@@ -138,7 +138,7 @@ public class Mgdm2d {
 						float rx_, float ry_,
 						float[][] field_, float[] balloon_, int[] labels_,
 						float fw_, float bw_, float sw_, float pw_,
-						String connectivityType_, String lutdir_
+						String connectivityType_, String lutdir_,
 						boolean extend_) {
 	
 		fieldforce = field_;
