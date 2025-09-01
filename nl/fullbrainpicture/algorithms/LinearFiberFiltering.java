@@ -67,6 +67,8 @@ public class LinearFiberFiltering {
 	public final void setAngles(float[] val) { angles = val; }
 	public final void setSizes(float[] val) { sizes = val; }
 	
+	public final void setSmooth(boolean val) { smooth = val; }
+	
 	// set generic inputs	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
