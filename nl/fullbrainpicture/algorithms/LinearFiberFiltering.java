@@ -25,7 +25,7 @@ public class LinearFiberFiltering {
 	private float[] angles;
 	private float[] sizes;
 	
-	private boolean smooth=false;
+	private float smooth=0.0f;
 	
 	// global variables
 	private int nx, ny, nz, nc, nxyz;
@@ -67,7 +67,7 @@ public class LinearFiberFiltering {
 	public final void setAngles(float[] val) { angles = val; }
 	public final void setSizes(float[] val) { sizes = val; }
 	
-	public final void setSmooth(boolean val) { smooth = val; }
+	public final void setSmooth(float val) { smooth = val; }
 	
 	// set generic inputs	
 	public final void setDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
@@ -156,7 +156,7 @@ public class LinearFiberFiltering {
 	}
 	
 
-	private void computeParcellationSurfaces(boolean smooth) {
+	private void computeParcellationSurfaces(float smooth) {
 				
 		int nmgdm = 4;
 		int nlb =  ObjectLabeling.countLabels(parcellationImage, nx, ny, nz);
@@ -167,7 +167,7 @@ public class LinearFiberFiltering {
         // 3. Run MGDM!
         Mgdm2d mgdm = new Mgdm2d(parcellationImage, nx, ny, nlb, nmgdm, rx, ry, null, 
                                 probaImage, parcellationImage,
-                                0.0f, 0.1f, 0.4f, 0.0f, 
+                                0.0f, 0.5f/(1.0f+smooth), 0.5f*smooth/(1.0f+smooth), 0.0f, 
                                 "no", null, true);
         
         if (smooth) {
