@@ -168,6 +168,10 @@ public class Mgdm2d {
 		
 		balloonscale = bscale_;
 		
+		// adjust narrow band scale for faster multiscale work? not sure
+		landmineDist = Numerics.max(landmineDist,bscale_);
+		narrowBandDist = landmineDist+1.8f;
+		
 		objLabel = ObjectLabeling.listOrderedLabels(init_, nx, ny);
 		// note: we do expect that there are nb objects (not checked)
 		
@@ -382,7 +386,7 @@ public class Mgdm2d {
      /**
       *		perform joint reinitialization for all labels 
       */
-     public final void fastMarchingReinitialization() {
+     public final void fastMarchingReinitialization(boolean extend) {
         // computation variables
         int[] processed = new int[nx*ny]; // note: using a int instead of boolean for the second pass
 		float[] nbdist = new float[4];
@@ -462,7 +466,7 @@ public class Mgdm2d {
 						}
 						float newdist = minimumMarchingDistance(nbdist, nbflag);
 						
-						if (newdist<=narrowBandDist) {
+						if (newdist<=narrowBandDist || extend) {
 							// add to the heap
 							heap.addValue(newdist,xyn,lb);
 						}
@@ -802,7 +806,7 @@ public class Mgdm2d {
         		
 				//resetIsosurfaceNarrowBand(narrowband);
 				resetIsosurfaceBoundary();
-				fastMarchingReinitialization();
+				fastMarchingReinitialization(false);
 				
 				// rebuild narrow band
 				narrowband.reset();
@@ -822,7 +826,7 @@ public class Mgdm2d {
 		// end of the evolution: recompute the level sets (disabled for debugging)
 		//resetIsosurfaceNarrowBand(narrowband);
 		resetIsosurfaceBoundary();
-		fastMarchingReinitialization();
+		fastMarchingReinitialization(true);
 		
         return;
     }
