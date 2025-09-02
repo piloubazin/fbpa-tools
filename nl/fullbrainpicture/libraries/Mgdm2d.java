@@ -168,9 +168,9 @@ public class Mgdm2d {
 		
 		balloonscale = bscale_;
 		
-		// adjust narrow band scale for faster multiscale work? not sure
-		landmineDist = Numerics.max(landmineDist,bscale_);
-		narrowBandDist = landmineDist+1.8f;
+		// adjust narrow band scale for faster multiscale work? not changing anything except slow
+		//landmineDist = Numerics.max(landmineDist,bscale_);
+		//narrowBandDist = landmineDist+1.8f;
 		
 		objLabel = ObjectLabeling.listOrderedLabels(init_, nx, ny);
 		// note: we do expect that there are nb objects (not checked)
