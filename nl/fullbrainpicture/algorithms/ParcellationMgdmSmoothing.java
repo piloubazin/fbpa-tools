@@ -55,8 +55,13 @@ public class ParcellationMgdmSmoothing {
 	// create outputs
 	public final int[] getSmoothedLabel() { return segImage; }
 	public final float[] getSmoothedProba() { return probaImage; }
-
+	
 	public void execute(){
+	     if (nz==1) execute2D();
+	     else execute3D();
+	}
+
+	public void execute3D(){
 
 		
 		int nmgdm = 4;
@@ -89,6 +94,44 @@ public class ParcellationMgdmSmoothing {
             }
         }
         
+        return;
+    }
+
+	public void execute2D(){
+
+		
+		int nmgdm = 4;
+		int nlb =  ObjectLabeling.countLabels(parcelImage, nx, ny, 1);
+		System.out.println("found labels: "+nlb);
+                
+		if (probaImage==null) {
+		    probaImage = new float[nxyz];
+		    for (int xyz=0;xyz<nxyz;xyz++) probaImage[xyz] = 0.5f;
+		}
+		
+        // 3. Run MGDM!
+        Mgdm2d mgdm = new Mgdm2d(parcelImage, nx, ny, nlb, nmgdm, rx, ry, null, 
+                                probaImage, parcelImage,
+                                0.0f, forceParam, curvParam, 0.0f, 
+                                topologyParam, lutdir, false, 1.0f);
+        
+        //mgdm.evolveNarrowBand(iterationParam, changeParam);
+        
+        // 4. copy the results
+        segImage = mgdm.reconstructedLabel(0);
+		mgdmImage = new float[nx*ny];
+        for (int xy=0;xy<nx*ny;xy++) {
+            mgdmImage[xy] = mgdm.getFunctions()[0][xy];
+        }
+        /*
+        // 5. change probabilitiy maps to reflect the changes
+        for (int xy=0;xy<nx*ny;xy++) {
+            if (segImage[xy]!=parcelImage[xy] && mgdmImage[xy]>0) {
+                probaImage[xy] *= FastMath.exp(-mgdmImage[xy]/distParam);
+            }
+        }
+        */
+        probaImage = mgdmImage;
         return;
     }
     

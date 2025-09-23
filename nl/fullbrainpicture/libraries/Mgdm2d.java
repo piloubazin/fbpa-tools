@@ -153,7 +153,7 @@ public class Mgdm2d {
 		smoothweight = sw_;
 		pressureweight = pw_;
 		
-		if (debug) System.out.print("MGDM forces: "+fw_+" (field), "+bw_+" (balloon), "+sw_+" (smoothing), "+pw_+" (pressure)\n");
+		if (debug) System.out.print("MGDM 2D forces: "+fw_+" (field), "+bw_+" (balloon), "+sw_+" (smoothing), "+pw_+" (pressure)\n");
 		
 		nx = nx_;
 		ny = ny_;
