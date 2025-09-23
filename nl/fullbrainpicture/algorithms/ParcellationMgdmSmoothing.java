@@ -115,7 +115,7 @@ public class ParcellationMgdmSmoothing {
                                 0.0f, forceParam, curvParam, 0.0f, 
                                 topologyParam, lutdir, false, 1.0f);
         
-        //mgdm.evolveNarrowBand(iterationParam, changeParam);
+        mgdm.evolveNarrowBand(iterationParam, changeParam);
         
         // 4. copy the results
         segImage = mgdm.reconstructedLabel(0);
