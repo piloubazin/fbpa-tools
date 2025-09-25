@@ -911,7 +911,7 @@ public class Mgdm2d {
 			
 			// build the balloon forces for different cells
 			double bforce = 0.0;
-			if (lb!=balloonlabels[xy]) {
+			if (lb==balloonlabels[xy]) {
 			    bforce = Numerics.bounded(balloonforces[xy], -1.0f, 1.0f);
 			} else {
 			    bforce = Numerics.bounded(-balloonforces[xy], -1.0f, 1.0f);
