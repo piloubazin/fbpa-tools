@@ -888,7 +888,7 @@ public class Mgdm2d {
 			double K =  Dyy*SD0x + Dxx*SD0y 
 						- 2.0*D0x*D0y*Dxy;
 				
-			if(GPhi > 0.0000001){
+			if (GPhi > 0.001){
 				double tmp = GPhi*GPhi;
 				K = K/(GPhi*tmp);
 			} else {
