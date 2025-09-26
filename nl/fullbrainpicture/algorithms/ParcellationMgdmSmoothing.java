@@ -112,7 +112,7 @@ public class ParcellationMgdmSmoothing {
         // 3. Run MGDM!
         Mgdm2d mgdm = new Mgdm2d(parcelImage, nx, ny, nlb, nmgdm, rx, ry, null, 
                                 null, parcelImage,
-                                0.0f, forceParam, curvParam, curvParam, 
+                                0.0f, forceParam, curvParam, 0.0f, 
                                 topologyParam, lutdir, false, distParam);
         
         mgdm.evolveNarrowBand(iterationParam, changeParam);
