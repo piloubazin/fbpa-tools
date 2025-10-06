@@ -40,6 +40,7 @@ public class SpectralVoxelThicknessEmbedding {
 	private double space = 1.0f;
 	private float link = 1.0f;
 	private boolean normalize=true;
+	private float ratio=1.0f;
 	
 	// numerical quantities
 	private static final	double	INVSQRT2 = 1.0/FastMath.sqrt(2.0);
@@ -78,6 +79,7 @@ public class SpectralVoxelThicknessEmbedding {
         else if (val.equals("Gauss")) affinity_type = GAUSS;
         else affinity_type = LINEAR;
 	}
+	public final void setThicknessRatio(float val) { ratio = val; }
 					
 	public final void setImageDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setImageDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -110,7 +112,7 @@ public class SpectralVoxelThicknessEmbedding {
 	    else return link/(1.0+dist/space);
 	}
 	   
-    public void rotatedJointSpatialEmbedding(int depth, double alpha) {
+    public void rotatedJointThicknessEmbedding(int depth, double alpha) {
 
 	    // make reference embedding
 	    System.out.println("-- building reference embedding --");
@@ -175,7 +177,7 @@ public class SpectralVoxelThicknessEmbedding {
 	    for (int d=0;d<depth;d++) for (int xyz=0;xyz<nxyz;xyz++) {
 	        if (closest[d][xyz]>0) {
 	            int m = (closest[d][xyz]-1);
-	            distances[d][xyz] += Numerics.abs( thickness[xyz] - thickness[pts[m]] );
+	            distances[d][xyz] += ratio*Numerics.abs( thickness[xyz] - thickness[pts[m]] );
 	        }
 	    }    
 	    
