@@ -917,30 +917,32 @@ public class SpectralVoxelThicknessEmbedding {
         }            
         dist = ObjectTransforms.fastMarchingDistanceFunction(dist, size+5.0f, nx, ny, nz, rx, ry, rz);
 
-        // use sum of gradients to define orientation
-        double gradxm = 0.0;
-        double gradym = 0.0;
-        double gradzm = 0.0;
+        // use max medial gradient to define orientation? need to propagate too?
+        double gradxM = 0.0;
+        double gradyM = 0.0;
+        double gradzM = 0.0;
+        float medialmax = 0.5f;
         for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
             int xyz = x+nx*y+nx*ny*z;
-            if (proba[xyz]>threshold) {
-                gradxm += 0.5*( (dist[xyz+1]-dist[xyz-1])/(rx/rmax) );
-                gradym += 0.5*( (dist[xyz+nx]-dist[xyz-nx])/(ry/rmax) );
-                gradzm += 0.5*( (dist[xyz+nx*ny]-dist[xyz-nx*ny])/(rz/rmax) );
+            if (medial[xyz]>=0.medialmax) {
+                medialmax = medial[xyz];
+                gradxM = Numerics.maxmag(dist[xyz+1]-dist[xyz], dist[xyz]-dist[xyz-1])/(rx/rmax);
+                gradyM = Numerics.maxmag(dist[xyz+nx]-dist[xyz], dist[xyz]-dist[xyz-nx])/(ry/rmax);
+                gradzM = Numerics.maxmag(dist[xyz+nx*ny]-dist[xyz], dist[xyz]-dist[xyz-nx*ny])/(rz/rmax);
             }
         }
-        double norm = FastMath.sqrt(gradxm*gradxm+gradym*gradym+gradzm*gradzm);
-        gradxm /= norm;
-        gradym /= norm;
-        gradzm /= norm;
+        double norm = FastMath.sqrt(gradxM*gradxM+gradyM*gradyM+gradzM*gradzM);
+        gradxM /= norm;
+        gradyM /= norm;
+        gradzM /= norm;
         
         boolean[] flip = new boolean[nxyz];
         for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
             int xyz = x+nx*y+nx*ny*z;
             if (proba[xyz]>threshold) {
-                double prod = gradxm*0.5*( (dist[xyz+1]-dist[xyz-1])/(rx/rmax) )
-                             +gradym*0.5*( (dist[xyz+nx]-dist[xyz-nx])/(ry/rmax) )
-                             +gradzm*0.5*( (dist[xyz+nx*ny]-dist[xyz-nx*ny])/(rz/rmax) );
+                double prod = gradxM*0.5*( (dist[xyz+1]-dist[xyz-1])/(rx/rmax) )
+                             +gradyM*0.5*( (dist[xyz+nx]-dist[xyz-nx])/(ry/rmax) )
+                             +gradzM*0.5*( (dist[xyz+nx*ny]-dist[xyz-nx*ny])/(rz/rmax) );
                              
                 if (prod<0) flip[xyz] = true;             
                              
