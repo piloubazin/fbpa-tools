@@ -924,7 +924,7 @@ public class SpectralVoxelThicknessEmbedding {
         float medialmax = 0.5f;
         for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
             int xyz = x+nx*y+nx*ny*z;
-            if (medial[xyz]>=0.medialmax) {
+            if (medial[xyz]>=medialmax) {
                 medialmax = medial[xyz];
                 gradxM = Numerics.maxmag(dist[xyz+1]-dist[xyz], dist[xyz]-dist[xyz-1])/(rx/rmax);
                 gradyM = Numerics.maxmag(dist[xyz+nx]-dist[xyz], dist[xyz]-dist[xyz-nx])/(ry/rmax);
