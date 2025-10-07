@@ -1013,7 +1013,7 @@ public class SpectralVoxelThicknessEmbedding {
                             int xyznb = ObjectTransforms.fastMarchingNeighborIndex(l, xyzn, nx, ny, nz);
                             // note that there is at most one value used here
                             for (int n=0;n<processed[xyznb];n++) if (closest[n][xyznb]==lb) {
-                                nbdist[l] = distances[n][xyznb];
+                                nbdist[l] = (1.0f-scaling)*distances[n][xyznb]+scaling*Numerics.abs(field[xyzn]-field[xyznb]);
                                 nbflag[l] = true;
                                 n = processed[xyznb];
                             }			
@@ -1021,7 +1021,7 @@ public class SpectralVoxelThicknessEmbedding {
                         float newdist = ObjectTransforms.minimumMarchingDistance(nbdist, nbflag);
                         
                         // add to the heap
-                        heap.addValue((1.0f-scaling)*newdist+scaling*Numerics.abs(field[xyz]-field[xyzn]),xyzn,lb);
+                        heap.addValue(newdist,xyzn,lb);
                     }
 				}
 			}			
