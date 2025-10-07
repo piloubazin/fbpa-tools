@@ -963,7 +963,7 @@ public class SpectralVoxelThicknessEmbedding {
                     int xyzn = ObjectTransforms.fastMarchingNeighborIndex(k, xyz, nx, ny, nz);
                     if (labels[xyzn]!=labels[xyz] && labels[xyzn]>-1) {
                         // add to the heap
-                        heap.addValue(0.5f+scaling*Numerics.abs(field[xyz]-field[xyzn]),xyzn,labels[xyz]);
+                        heap.addValue((1.0f-scaling)*0.5f+scaling*Numerics.abs(field[xyz]-field[xyzn]),xyzn,labels[xyz]);
                     }
                 }
             }
@@ -1021,7 +1021,7 @@ public class SpectralVoxelThicknessEmbedding {
                         float newdist = ObjectTransforms.minimumMarchingDistance(nbdist, nbflag);
                         
                         // add to the heap
-                        heap.addValue(newdist+scaling*Numerics.abs(field[xyz]-field[xyzn]),xyzn,lb);
+                        heap.addValue((1.0f-scaling)*newdist+scaling*Numerics.abs(field[xyz]-field[xyzn]),xyzn,lb);
                     }
 				}
 			}			
