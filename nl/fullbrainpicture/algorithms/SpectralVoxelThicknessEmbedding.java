@@ -904,7 +904,23 @@ public class SpectralVoxelThicknessEmbedding {
                                         || medial[xyz+nx*ny]>=0.5f || medial[xyz-nx*ny]>=0.5f)) 
             
                 dist[xyz] = ObjectTransforms.fastMarchingOutsideNeighborDistance(dist, xyz, nx,ny,nz, rx,ry,rz);
-        }            
+        }
+        /*
+        // flip one side?
+        int xyz0 = -1;
+        float maxmed = 0.0f;
+        for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) for (int z=1;z<nz-1;z++) {
+            int xyz = x+nx*y+nx*ny*z;
+            if (medial[xyz]>=0.5f && (medial[xyz+1]<0.5f || medial[xyz-1]<0.5f
+                                                || medial[xyz+nx]<0.5f || medial[xyz-nx]<0.5f
+                                                || medial[xyz+nx*ny]<0.5f || medial[xyz-nx*ny]<0.5f))
+                if (medial[xyz]>maxmed) {
+                    maxmed = medial[xyz];
+                    xyz0 = xyz;
+                }
+        }
+        // 
+        
         dist = ObjectTransforms.fastMarchingDistanceFunction(dist, size+5.0f, nx, ny, nz, rx, ry, rz);
         
         /* not needed: only use local gradients
@@ -945,7 +961,7 @@ public class SpectralVoxelThicknessEmbedding {
                 dist[xyz] = -dist[xyz];
             }
         }*/
-        return dist;
+        return levelset;
 	}
 	
 	private static final void computeOutsideGradientAndDistanceFunctions(int nb, float[][] distances, int[][] closest, int[] labels, float[] field, float scaling, int nx, int ny, int nz)  {
