@@ -238,11 +238,7 @@ public class SpectralVoxelThicknessEmbedding {
                 imgEmbedding[xyz+(dim-1)*nxyz] /= norm;
             }
         }
-        //debug
-        for (int xyz=0;xyz<nxyz;xyz++) {
-            imgEmbedding[xyz] = thickness[xyz];
-        }
-
+        
         // check the result
         System.out.println("orthogonality");
         double mean = 0.0;
