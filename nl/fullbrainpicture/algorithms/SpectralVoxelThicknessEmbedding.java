@@ -292,8 +292,11 @@ public class SpectralVoxelThicknessEmbedding {
 	    float[][] distancesRef = new float[depth][nxyzr];
         int[][] closestRef = new int[depth][nxyzr];
         
-        // build the needed distance functions
-        ObjectTransforms.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, samplesRef, nxr, nyr, nzr);
+        // compute and add the thickness distance
+	    float[] thicknessRef = computeSignedThicknessDistance(refImage);
+	    
+	    // build the needed distance functions
+        computeOutsideGradientAndDistanceFunctions(depth, distancesRef, closestRef, samplesRef, thicknessRef, ratio, nxr, nyr, nzr);
         
         // select subject points aligned with reference
         int[] samples = new int[nxyz];
@@ -353,8 +356,11 @@ public class SpectralVoxelThicknessEmbedding {
 	    float[][] distances = new float[depth][nxyz];
         int[][] closest = new int[depth][nxyz];
         
-        // build the needed distance functions
-        ObjectTransforms.computeOutsideDistanceFunctions(depth, distances, closest, samples, nx, ny, nz);
+        // compute and add the thickness distance
+	    float[] thickness = computeSignedThicknessDistance(inputImage);
+	    
+	    // build the needed distance functions
+        computeOutsideGradientAndDistanceFunctions(depth, distances, closest, samples, thickness, ratio, nx, ny, nz);
         
         float maxdist = 0.0f;
         for (int d=0;d<depth;d++) for (int xyz=0;xyz<nxyz;xyz++) {
@@ -517,8 +523,10 @@ public class SpectralVoxelThicknessEmbedding {
 	    float[][] distancesRef = new float[depth][nxyzr];
         int[][] closestRef = new int[depth][nxyzr];
         
+        float[] thicknessRef = computeSignedThicknessDistance(refImage);
+	    
         // build the needed distance functions
-        ObjectTransforms.computeOutsideDistanceFunctions(depth, distancesRef, closestRef, samplesRef, nxr, nyr, nzr);
+        computeOutsideGradientAndDistanceFunctions(depth, distancesRef, closestRef, samplesRef, thicknessRef, ratio, nxr, nyr, nzr);
         
 	    float maxdistRef = 0.0f;
         for (int d=0;d<depth;d++) for (int xyz=0;xyz<nxyzr;xyz++) {
