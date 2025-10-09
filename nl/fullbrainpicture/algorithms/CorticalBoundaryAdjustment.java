@@ -276,7 +276,8 @@ public class CorticalBoundaryAdjustment {
                 System.out.println("repeat "+(t+1));
                 
                 // Run the adjustment for gwb
-                lvl1 = fitJointFasterBoundarySigmoid(gwbImage, off1, iterations, gwbContrastTypes, gwbmask);
+                lvl1 = fitJointFasterMultiBoundarySigmoid(gwbImage, off1, iterations, gwbContrastTypes, gwbmask);
+                //lvl1 = fitJointFasterBoundarySigmoid(gwbImage, off1, iterations, gwbContrastTypes, gwbmask);
                 gwbImage = adjustLevelset(gwbImage, lvl1);
             }
             
@@ -291,7 +292,8 @@ public class CorticalBoundaryAdjustment {
                 System.out.println("repeat "+(t+1));
             
                 // Run the adjustment for cgb
-                lvl2 = fitJointFasterBoundarySigmoid(cgbImage, off2, iterations, cgbContrastTypes, cgbmask);
+                lvl2 = fitJointFasterMultiBoundarySigmoid(cgbImage, off2, iterations, cgbContrastTypes, cgbmask);
+                //lvl2 = fitJointFasterBoundarySigmoid(cgbImage, off2, iterations, cgbContrastTypes, cgbmask);
                 cgbImage = adjustLevelset(cgbImage, lvl2);
             }
         }
@@ -751,6 +753,158 @@ public class CorticalBoundaryAdjustment {
                                             // to check??
                                             wgtin *= Numerics.bounded((contrastImages[c][dxyz]-interior[c])/(exterior[c]-interior[c]), delta, 1.0f-delta);
                                             wgtex *= Numerics.bounded((exterior[c]-contrastImages[c][dxyz])/(exterior[c]-interior[c]), delta, 1.0f-delta);
+                                            count++;
+                                        }
+                                    }
+                                }
+                            }
+                            // we only use regions where there is correct variation in all contrasts
+                            if (count==nc) {
+                
+                                inbound += oldlevel[dxyz]*wgtx*wgtin;
+                                inwgt += wgtx*wgtin;
+                
+                                exbound += oldlevel[dxyz]*wgtx*wgtex;
+                                exwgt += wgtx*wgtex;
+                                
+                                bdcount += wgtx;
+                            }
+                        }
+                    }
+                    // seems to be a good compromise, using the relative probabilities for in/out as spatial bias
+                    if (bdcount>0) {
+                        float offset = 0.5f*(inbound/bdcount + exbound/bdcount)/(inwgt/bdcount + exwgt/bdcount);
+                        newlevel[xyz] = levelset[xyz]-offset;
+                        
+                        maxdiff = Numerics.max(maxdiff,Numerics.abs(offset));
+                        off[xyz] = Numerics.abs(offset);
+                        
+                        meandiff += Numerics.abs(offset);
+                        ncount++;
+                    }
+                }
+            }
+            System.out.println(" mean difference: "+meandiff/ncount);
+            System.out.println(" max difference: "+maxdiff);
+            System.out.println(" active boundary points: "+ncount);
+        }
+        return newlevel;
+    }
+
+	public float[] fitJointFasterMultiBoundarySigmoid(float[] levelset, float[] off, int iter, byte[] contrastTypes, boolean[] mask) {
+
+	    float delta = 0.001f;
+	    float dist0 = 2.0f;
+	    
+	    int dist = Numerics.ceil(distance);
+	    
+	    // go over voxels close enough to the boundary
+	    float[] newlevel = new float[nxyz];
+	    float[] oldlevel = new float[nxyz];
+	    
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        newlevel[xyz] = levelset[xyz];
+	    }
+
+	    for (int t=0;t<iter;t++) {
+	        System.out.println("iteration "+(t+1));
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                oldlevel[xyz] = newlevel[xyz];
+            }
+            float maxdiff = 0.0f;
+            float meandiff = 0.0f;
+            int ncount=0;
+            for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+                int xyz = x+nx*y+nx*ny*z;
+                
+                if (mask[xyz] && Numerics.abs(oldlevel[xyz])<spread && off[xyz]>stopDist) {
+                    
+                    // grow region
+                    float[] interior = new float[nc];
+                    float[] incount = new float[nc];
+                    float[] extinc = new float[nc];
+                    float[] exincount = new float[nc];
+                    float[] extdec = new float[nc];
+                    float[] exdecount = new float[nc];
+                    for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                        int dxyz = dx+nx*dy+nx*ny*dz;
+                        if (mask[dxyz]) {
+                            for (int c=0;c<nc;c++) {
+                                if ( (contrastTypes[c]==INCREASING || contrastTypes[c]==BOTH) 
+                                    && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                      || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) {
+                                    
+                                    float win = - Numerics.bounded(oldlevel[dxyz]/dist0, -1.0f, 1.0f);
+                                    if (win<0) {
+                                        extinc[c] += win*win*contrastImages[c][dxyz];
+                                        exincount[c] += win*win;
+                                    }
+                                    if (win>0) {
+                                        interior[c] += win*win*contrastImages[c][dxyz];
+                                        incount[c] += win*win;
+                                    }
+                                } 
+                                if ( (contrastTypes[c]==DECREASING || contrastTypes[c]==BOTH)
+                                    && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                      || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) { 
+                                    
+                                    float win = - Numerics.bounded(oldlevel[dxyz]/dist0, -1.0f, 1.0f);
+                                    if (win<0) {
+                                        extdec[c] += win*win*contrastImages[c][dxyz];
+                                        exdecount[c] += win*win;
+                                    }
+                                    if (win>0) {
+                                        interior[c] += win*win*contrastImages[c][dxyz];
+                                        incount[c] += win*win;
+                                    }
+                                } 
+                            }
+                        }
+                    }
+                    for (int c=0;c<nc;c++) {
+                        if (incount[c]>0) interior[c] /= incount[c];
+                        if (exincount[c]>0) extinc[c] /= exincount[c];
+                        if (exdecount[c]>0) extdec[c] /= exdecount[c];                        
+                    }
+                    float inbound = 0.0f;
+                    float exbound = 0.0f;
+                    float bdcount = 0.0f;
+                    float inwgt = 0.0f;
+                    float exwgt = 0.0f;
+                    // offset as the location where probability in/out transition?
+                    for (int dx=x-dist;dx<=x+dist;dx++) for (int dy=y-dist;dy<=y+dist;dy++) for (int dz=z-dist;dz<=z+dist;dz++) {
+                        int dxyz = dx+nx*dy+nx*ny*dz;
+                        if (mask[dxyz]) {
+                            float wgtx = Numerics.bounded((float)FastMath.exp(-0.5*Numerics.square(oldlevel[dxyz]/dist0)), delta, 1.0f-delta);
+                            
+                            float wgtin=1.0f;
+                            float wgtex=1.0f;
+                            int count=0;
+                            for (int c=0;c<nc;c++) {
+                                // skip if one is empty
+                                if (incount[c]>0 && (exincount[c]>0 || exdecount[c]>0) ) {
+                                    
+                                    // only take into account correct contrast values
+                                    if ( (contrastTypes[c]==INCREASING && extinc[c]>interior[c]) 
+                                        || (contrastTypes[c]==DECREASING && extdec[c]<interior[c])
+                                        || (contrastTypes[c]==BOTH && extinc[c]>interior[c]&& extdec[c]<interior[c]) ) {
+                
+                                        if ( (contrastTypes[c]==INCREASING || contrastTypes[c]==BOTH)
+                                            && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) 
+                                              || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) ) ) {
+                            
+                                            // to check??
+                                            wgtin *= Numerics.bounded((contrastImages[c][dxyz]-interior[c])/(extinc[c]-interior[c]), delta, 1.0f-delta);
+                                            wgtex *= Numerics.bounded((extinc[c]-contrastImages[c][dxyz])/(extinc[c]-interior[c]), delta, 1.0f-delta);
+                                            count++;
+                                        }
+                                        else if ( (contrastTypes[c]==DECREASING || contrastTypes[c]==BOTH) 
+                                                && ( (oldlevel[dxyz]>oldlevel[xyz] && contrastImages[c][dxyz]<=contrastImages[c][xyz]) 
+                                                  || (oldlevel[dxyz]<=oldlevel[xyz] && contrastImages[c][dxyz]>contrastImages[c][xyz]) ) ) {
+                            
+                                            // to check??
+                                            wgtin *= Numerics.bounded((contrastImages[c][dxyz]-interior[c])/(extdec[c]-interior[c]), delta, 1.0f-delta);
+                                            wgtex *= Numerics.bounded((extdec[c]-contrastImages[c][dxyz])/(extdec[c]-interior[c]), delta, 1.0f-delta);
                                             count++;
                                         }
                                     }
