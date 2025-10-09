@@ -45,7 +45,7 @@ public class CorticalBoundaryAdjustment {
 	private float lvlRatio = 0.5f;
 	private float stopDist = 0.01f;
 	private float meancnr = 4.0f;
-	private boolean dilateMask = true;
+	private int dilateMask = 1;
 	
 	// supervoxel stuff
 	int nsx,nsy,nsz,nsxyz;
@@ -112,7 +112,7 @@ public class CorticalBoundaryAdjustment {
 	public final void setNoiseRatio(float val) { noiseRatio = val; }
 	public final void setStoppingDistance(float val) { stopDist = val; }
 	public final void setMeanCNR(float val) { meancnr = val; }
-	public final void setDilateMask(boolean val) { dilateMask = val; }
+	public final void setDilateMask(int val) { dilateMask = val; }
 	
 	// create outputs
 	public final float[] getGwbLevelsetImage() { return gwbImage; }
@@ -231,7 +231,7 @@ public class CorticalBoundaryAdjustment {
 		maskImage = null;
 	    
 		// dilate to avoid border effects at edge of the masks
-		if (dilateMask) mainmask = Morphology.erodeObject(mainmask, nx,ny,nz, 1,1,1); 
+		if (dilateMask>0) mainmask = Morphology.erodeObject(mainmask, nx,ny,nz, dilateMask,dilateMask,dilateMask); 
 		
         // Start with gwb, push boundary inward from cgb
         // Push cgb boundary outward from gwb
