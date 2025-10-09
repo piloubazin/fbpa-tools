@@ -54,9 +54,11 @@ public class SpectralVoxelMapping {
 
 	public final void execute() {
 	    
+	    int ntotal = Numerics.round(FastMath.pow(nbins, ndims));
+	    
 	    // create the output image
-	    embeddedImage = new float[ndims*nbins];
-	    float[] count = new float[ndims*nbins];
+	    embeddedImage = new float[ntotal];
+	    float[] count = new float[ntotal];
 	    
 	    // compute coordinate bounds (centered on zero)
 	    float cmin = 1e9f;
@@ -70,16 +72,21 @@ public class SpectralVoxelMapping {
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        int bin=0;
 	        for (int d=0;d<ndims;d++) {
+	            int n=nbins-1;
 	            if (imgEmbedding[xyz+d*nxyz]<cmax)
-	                bin += Numerics.floor(nbins*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin)) + d*nbins;
-	            else
-	                bin += nbins-1 + d*nbins;
+	                 n = Numerics.floor(nbins*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
+                if (d==0) bin += n;
+                if (d==1) bin += n*nbins;
+                if (d==2) bin += n*nbins*nbins;
+                if (d==3) bin += n*nbins*nbins*nbins;
+                if (d==4) bin += n*nbins*nbins*nbins*nbins;
+                if (d==5) bin += n*nbins*nbins*nbins*nbins*nbins;
 	        }
 	        embeddedImage[bin] += inputImage[xyz];
 	        count[bin]++;
 	    }
 	        
-	    for (int b=0;b<nbins*ndims;b++) if (count[b]>0) {
+	    for (int b=0;b<ntotal;b++) if (count[b]>0) {
 	        embeddedImage[b] /= count[b];
 	    }
 
