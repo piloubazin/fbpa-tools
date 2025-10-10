@@ -27,8 +27,8 @@ public class SpectralVoxelMapping {
     private int nx, ny, nz, nxyz;
 	private float rx, ry, rz;
 
-	private int ndims = 10;
-	private int nbins = 100;
+	private int ndims = 3;
+	private int[] nbins = null;
 		
 	// for debug and display
 	private static final boolean		debug=true;
@@ -39,8 +39,11 @@ public class SpectralVoxelMapping {
 	public final void setEmbeddingImage(float[] val) { imgEmbedding = val; }
 	
 	
-	public final void setDimensions(int val) { ndims = val; }
-	public final void setCoordinateBins(int val) { nbins = val; }
+	public final void setDimensions(int val) { 
+	    ndims = val; 
+	    nbins = new int[ndims];
+	}
+	public final void setBinAt(int n, int val) { nbins[n] = val; }
 					
 	public final void setImageDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setImageDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -54,7 +57,8 @@ public class SpectralVoxelMapping {
 
 	public final void execute() {
 	    
-	    int ntotal = Numerics.round(FastMath.pow(nbins, ndims));
+	    int ntotal = 1;
+	    for (int d=0;d<ndims;d++) ntotal *= nbins[d];
 	    
 	    // create the output image
 	    embeddedImage = new float[ntotal];
@@ -72,15 +76,13 @@ public class SpectralVoxelMapping {
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        int bin=0;
 	        for (int d=0;d<ndims;d++) {
-	            int n=nbins-1;
+	            int n=nbins[d]-1;
 	            if (imgEmbedding[xyz+d*nxyz]<cmax)
-	                 n = Numerics.floor(nbins*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
+	                 n = Numerics.floor(nbins[d]*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
                 if (d==0) bin += n;
-                if (d==1) bin += n*nbins;
-                if (d==2) bin += n*nbins*nbins;
-                if (d==3) bin += n*nbins*nbins*nbins;
-                if (d==4) bin += n*nbins*nbins*nbins*nbins;
-                if (d==5) bin += n*nbins*nbins*nbins*nbins*nbins;
+                if (d==1) bin += n*nbins[0];
+                if (d==2) bin += n*nbins[0]*nbins[1];
+                if (d==3) bin += n*nbins[0]*nbins[1]*nbins[2];
 	        }
 	        embeddedImage[bin] += inputImage[xyz];
 	        count[bin]++;
