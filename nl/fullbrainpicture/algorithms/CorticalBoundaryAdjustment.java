@@ -310,12 +310,12 @@ public class CorticalBoundaryAdjustment {
         assessJointFasterBoundarySigmoid(probaImage, cgbImage, cgbContrastTypes, cgbmask, meancnr);
 
         for (int xyz=0;xyz<nxyz;xyz++) {
-                 if (gwbImage[xyz]<0 && output[xyz]==2) output[xyz] = 8;
-            else if (gwbImage[xyz]<0 && output[xyz]==1) output[xyz] = 7;
-            else if (gwbImage[xyz]<0 && output[xyz]==0) output[xyz] = 6;
-            else if (cgbImage[xyz]<0 && output[xyz]==2) output[xyz] = 5;
-            else if (cgbImage[xyz]<0 && output[xyz]==1) output[xyz] = 4;
-            else if (cgbImage[xyz]<0 && output[xyz]==0) output[xyz] = 3;
+                 if (gwbImage[xyz]<=0 && output[xyz]==2) output[xyz] = 8;
+            else if (gwbImage[xyz]<=0 && output[xyz]==1) output[xyz] = 7;
+            else if (gwbImage[xyz]<=0 && output[xyz]==0) output[xyz] = 6;
+            else if (cgbImage[xyz]<=0 && output[xyz]==2) output[xyz] = 5;
+            else if (cgbImage[xyz]<=0 && output[xyz]==1) output[xyz] = 4;
+            else if (cgbImage[xyz]<=0 && output[xyz]==0) output[xyz] = 3;
             else if (output[xyz]==2) output[xyz] = 2;
             else if (output[xyz]==1) output[xyz] = 1;
             else output[xyz] = 0;
