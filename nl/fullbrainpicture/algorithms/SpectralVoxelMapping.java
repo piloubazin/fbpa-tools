@@ -29,6 +29,7 @@ public class SpectralVoxelMapping {
 
 	private int ndims = 3;
 	private int[] nbins = null;
+	private float[] smooth = null;
 		
 	// for debug and display
 	private static final boolean		debug=true;
@@ -42,8 +43,10 @@ public class SpectralVoxelMapping {
 	public final void setDimensions(int val) { 
 	    ndims = val; 
 	    nbins = new int[ndims];
+	    smooth = new float[ndims];
 	}
 	public final void setBinAt(int n, int val) { nbins[n] = val; }
+	public final void setSmoothAt(int n, float val) { smooth[n] = val; }
 					
 	public final void setImageDimensions(int x, int y, int z) { nx=x; ny=y; nz=z; nxyz=nx*ny*nz; }
 	public final void setImageDimensions(int[] dim) { nx=dim[0]; ny=dim[1]; nz=dim[2]; nxyz=nx*ny*nz; }
@@ -90,6 +93,24 @@ public class SpectralVoxelMapping {
 	        
 	    for (int b=0;b<ntotal;b++) if (count[b]>0) {
 	        embeddedImage[b] /= count[b];
+	    }
+	    
+	    boolean doSmooth=false;
+	    for (int d=0;d<ndims;d++) if (smooth[d]>0) doSmooth=true;
+	    
+        if (doSmooth) {
+            // smoothing, if needed
+            if (ndims==2) {
+                float[][] kernel = ImageFilters.separableGaussianKernel2D(smooth[0],smooth[1]);
+                embeddedImage = ImageFilters.separableConvolution2D(embeddedImage, nbins[0], nbins[1], kernel);
+            } else if (ndims==3) {
+                float[][] kernel = ImageFilters.separableGaussianKernel3D(smooth[0],smooth[1],smooth[2]);
+                embeddedImage = ImageFilters.separableConvolution3D(embeddedImage, nbins[0], nbins[1], nbins[2], kernel);
+            } else if (ndims==4) {
+                float[][] kernel = ImageFilters.separableGaussianKernel4D(smooth[0],smooth[1],smooth[2],smooth[3]);
+                embeddedImage = ImageFilters.separableConvolution4D(embeddedImage, nbins[0], nbins[1], nbins[2], nbins[3], kernel);
+            }
+                
 	    }
 
 	    return;
