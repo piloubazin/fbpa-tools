@@ -25,11 +25,18 @@ public class LinearFiberFiltering {
 	private float[] angles;
 	private float[] sizes;
 	
+	private int nc=0;
+	
 	private float smooth=1.0f;
 	private float scale=10.0f;
 	
+	private float diaSc;
+	private float lenSc;
+	private float angSc;
+	
+	
 	// global variables
-	private int nx, ny, nz, nc, nxyz;
+	private int nx, ny, nz, nxyz;
 	private float rx, ry, rz;
 	
 	// numerical quantities
@@ -40,21 +47,15 @@ public class LinearFiberFiltering {
 	private static final	float	SQRT2PI = (float)FastMath.sqrt(2.0*(float)Math.PI);
 	private static final	float	PI2 = (float)(Math.PI/2.0);
 	private static final	float   L2N2=2.0f*(float)(FastMath.sqrt(2.0*(float)(FastMath.log(2.0))));
+	private static final	float   INF=1e30f;
+	private static final	float   ZERO=1e-30f;
 	
-	// direction labeling		
-	public	static	final	byte	X = 0;
-	public	static	final	byte	Y = 1;
-	public	static 	final 	byte 	XpY = 2;
-	public	static 	final 	byte 	XmY = 3;
-	public	static	final	byte	mX = 4;
-	public	static	final	byte	mY = 5;
-	public	static 	final 	byte 	mXpY = 6;
-	public	static 	final 	byte 	mXmY = 7;
-	
-	public	static 	final 	byte 	NC = 4;
-	public	static 	final 	byte 	NC2 = 8;
+	private static final int DIA=0;
+	private static final int LEN=1;
+	private static final int ANG=2;   
 	
 	private static final boolean debug=true;
+	private static final boolean verbose=true;
 	
 	//set inputs
 	public final void setPartialVolumeImage(float[] val) { pvImage = val;}
@@ -67,6 +68,8 @@ public class LinearFiberFiltering {
 	public final void setThicknesses(float[] val) { thicknesses = val; }
 	public final void setAngles(float[] val) { angles = val; }
 	public final void setSizes(float[] val) { sizes = val; }
+	
+	public final void setClusters(int val) { nc = val; }
 	
 	public final void setSmooth(float val) { smooth = val; }
 	public final void setScale(float val) { scale = val; }
@@ -97,66 +100,284 @@ public class LinearFiberFiltering {
 			probaImage = new float[nxyz];
 		}
 		
-		for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
-		    int xyz = x+nx*y;
-			if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0) {
-				labelImage[xyz] = 111;
-				// thickness
-				for (int n=0;n<nth;n++) {
-					if (diameterImage[xyz]>thicknesses[n]) {
-						labelImage[xyz] += 100;
-					}
-				}
-				// angle
-				double theta = thetaImage[xyz];
-				if (parcellationImage!=null) {
-					double gpx = 0.0;
-					if  (parcellationImage[xyz+1]==parcellationImage[xyz])
-						gpx += mgdmImage[xyz+1];
-					else
-						gpx -= mgdmImage[xyz+1];
-					
-					if  (parcellationImage[xyz-1]==parcellationImage[xyz])
-						gpx -= mgdmImage[xyz-1];
-					else
-						gpx += mgdmImage[xyz-1];
-					
-					double gpy = 0.0;
-					if  (parcellationImage[xyz+nx]==parcellationImage[xyz])
-						gpy += mgdmImage[xyz+nx];
-					else
-						gpy -= mgdmImage[xyz+nx];
-					
-					if  (parcellationImage[xyz-nx]==parcellationImage[xyz])
-						gpy -= mgdmImage[xyz-nx];
-					else
-						gpy += mgdmImage[xyz-nx];
-					
-					double np = FastMath.sqrt(gpx*gpx+gpy*gpy);
-					
-					double gax = FastMath.cos(theta/180.0*FastMath.PI);
-					double gay = FastMath.sin(theta/180.0*FastMath.PI);
-					
-					theta = 180.0/FastMath.PI*FastMath.acos(Numerics.abs(gax*gpx+gay*gpy)/np);
-				}
-				for (int n=0;n<nag;n++) {
-					if (theta>angles[n]) {
-						labelImage[xyz] += 10;
-					}
-				}
-				// size
-				for (int n=0;n<nsz;n++) {
-					if (lengthImage[xyz]>sizes[n]) {
-						labelImage[xyz] += 1;
-					}
-				}
-			}
-				
-		}
+		if (nc==0) {
+            for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+                int xyz = x+nx*y;
+                if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0) {
+                    labelImage[xyz] = 111;
+                    // thickness
+                    for (int n=0;n<nth;n++) {
+                        if (diameterImage[xyz]>thicknesses[n]) {
+                            labelImage[xyz] += 100;
+                        }
+                    }
+                    // angle
+                    double theta = thetaImage[xyz];
+                    if (parcellationImage!=null) {
+                        double gpx = 0.0;
+                        if  (parcellationImage[xyz+1]==parcellationImage[xyz])
+                            gpx += mgdmImage[xyz+1];
+                        else
+                            gpx -= mgdmImage[xyz+1];
+                        
+                        if  (parcellationImage[xyz-1]==parcellationImage[xyz])
+                            gpx -= mgdmImage[xyz-1];
+                        else
+                            gpx += mgdmImage[xyz-1];
+                        
+                        double gpy = 0.0;
+                        if  (parcellationImage[xyz+nx]==parcellationImage[xyz])
+                            gpy += mgdmImage[xyz+nx];
+                        else
+                            gpy -= mgdmImage[xyz+nx];
+                        
+                        if  (parcellationImage[xyz-nx]==parcellationImage[xyz])
+                            gpy -= mgdmImage[xyz-nx];
+                        else
+                            gpy += mgdmImage[xyz-nx];
+                        
+                        double np = FastMath.sqrt(gpx*gpx+gpy*gpy);
+                        
+                        double gax = FastMath.cos(theta/180.0*FastMath.PI);
+                        double gay = FastMath.sin(theta/180.0*FastMath.PI);
+                        
+                        theta = 180.0/FastMath.PI*FastMath.acos(Numerics.abs(gax*gpx+gay*gpy)/np);
+                    }
+                    for (int n=0;n<nag;n++) {
+                        if (theta>angles[n]) {
+                            labelImage[xyz] += 10;
+                        }
+                    }
+                    // size
+                    for (int n=0;n<nsz;n++) {
+                        if (lengthImage[xyz]>sizes[n]) {
+                            labelImage[xyz] += 1;
+                        }
+                    }
+                }
+                    
+            }
+        } else {
+            // multi-modal FCM approach 
+            
+            
+            // convert from arbitrary angles to angles relating to structures
+            computeParcellationAngles();
+            
+            // scales: given a priori for now, can be optimized further
+            diaSc = 1.0f;
+            lenSc = 5.0f;
+            angSc = 30.0f;
+            
+            float[][] centroids = new float[nc][3];
+            // simple init: factor of the scales
+            for (int c=0;c<nc;c++) {
+                centroids[c][DIA] = (c+1.0f)*diaSc;
+                centroids[c][LEN] = (c+1.0f)*lenSc;
+                centroids[c][ANG] = (c+1.0f)*angSc;
+            }
+            
+            computeScales(centroids);
+            
+            float[][] mems = new float[nxyz][nc];
+            computeMemberships(mems, centroids);
+            
+            float distance = 0.0f;
+            int Niterations = 1;
+            int maxIter = 50;
+            float maxDist = 0.01f;
+            boolean stop = false;
+            if (Niterations >= maxIter) stop = true;
+            while (!stop) {
+                if (verbose) System.out.print("iteration " + Niterations + " (max: " + distance + ") ");
+			
+                // update centroids
+                computeCentroids(mems, centroids);
+			
+                // update scales (?)
+                computeScales(centroids);
+            
+                // update membership
+                distance = computeMemberships(mems, centroids);
+			
+                // check for segmentation convergence 
+                Niterations++;
+                if (Niterations > maxIter) stop = true;
+                if (distance < maxDist) stop = true;            
+            }
+                
+            // generate classification map
+            labelImage = new int[nxyz];
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
+                    int best=0;
+                    for (int c=1;c<nc;c++) {
+                        if (mems[c][xyz]>mems[best][xyz]) best = c;
+                    }
+                    labelImage[xyz] = best+1;
+                } else {
+                    labelImage[xyz] = 0;
+                }
+            }            
+        }
 		
 		return;
 	}
 	
+	private void computeParcellationAngles() {
+        for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+            int xyz = x+nx*y;
+            if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
+                
+                double theta = thetaImage[xyz];
+                if (parcellationImage!=null) {
+                    double gpx = 0.0;
+                    if  (parcellationImage[xyz+1]==parcellationImage[xyz])
+                        gpx += mgdmImage[xyz+1];
+                    else
+                        gpx -= mgdmImage[xyz+1];
+                    
+                    if  (parcellationImage[xyz-1]==parcellationImage[xyz])
+                        gpx -= mgdmImage[xyz-1];
+                    else
+                        gpx += mgdmImage[xyz-1];
+                    
+                    double gpy = 0.0;
+                    if  (parcellationImage[xyz+nx]==parcellationImage[xyz])
+                        gpy += mgdmImage[xyz+nx];
+                    else
+                        gpy -= mgdmImage[xyz+nx];
+                    
+                    if  (parcellationImage[xyz-nx]==parcellationImage[xyz])
+                        gpy -= mgdmImage[xyz-nx];
+                    else
+                        gpy += mgdmImage[xyz-nx];
+                    
+                    double np = FastMath.sqrt(gpx*gpx+gpy*gpy);
+                    
+                    double gax = FastMath.cos(theta/180.0*FastMath.PI);
+                    double gay = FastMath.sin(theta/180.0*FastMath.PI);
+                    
+                    theta = 180.0/FastMath.PI*FastMath.acos(Numerics.abs(gax*gpx+gay*gpy)/np);
+                }
+                thetaImage[xyz] = (float)theta;
+            }
+        }
+
+	}
+	
+	private float computeMemberships(float[][] mems, float[][] centroids) {
+	    float distance,dist;
+        float den,num;
+        float neighbors, ngb;
+        
+        distance = 0.0f;
+
+	    float[] prev = new float[nc];
+	    
+	    for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+	        int xyz = x+nx*y;
+            if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
+                den = 0.0f;
+                for (int c=0;c<nc;c++) {
+                    prev[c] = mems[c][xyz];
+                }
+                
+                for (int c=0;c<nc;c++) {
+                    // data term
+                    num = 0.0f;
+                    num += (diameterImage[xyz]-centroids[c][DIA])*(diameterImage[xyz]-centroids[c][DIA])/(diaSc*diaSc);
+                    num += (lengthImage[xyz]-centroids[c][LEN])*(lengthImage[xyz]-centroids[c][LEN])/(lenSc*lenSc);
+                    num += (thetaImage[xyz]-centroids[c][ANG])*(thetaImage[xyz]-centroids[c][ANG])/(angSc*angSc);
+                    
+                    // no spatial smoothing: doesn't make much sense here
+
+                    // invert the result
+                    if (num>ZERO) num = 1.0f/num;
+                    else num = INF;
+
+                    mems[c][xyz] = num;
+                    den += num;
+                }
+
+                // normalization
+                for (int c=0;c<nc;c++) {
+                    mems[c][xyz] = mems[c][xyz]/den;
+
+                    // compute the maximum distance
+                    dist = Math.abs(mems[c][xyz]-prev[c]);
+                    if (dist > distance) distance = dist;
+                }
+            }
+        }
+        return distance;
+    }
+    
+    private void computeCentroids(float[][] mems, float[][] centroids) {
+        float[] num = new float[3];
+        float[] den = new float[3];
+        
+        for (int c=0;c<nc;c++) {
+            for (int i=0;i<3;i++) {
+                num[i] = 0.0f;
+                den[i] = 0.0f;
+            }
+            for (int xyz=0;xyz<nxyz;xyz++) {
+                if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
+                    num[DIA] += mems[c][xyz]*mems[c][xyz]*diameterImage[xyz];
+                    den[DIA] += mems[c][xyz]*mems[c][xyz];
+                    num[LEN] += mems[c][xyz]*mems[c][xyz]*lengthImage[xyz];
+                    den[LEN] += mems[c][xyz]*mems[c][xyz];
+                    num[ANG] += mems[c][xyz]*mems[c][xyz]*thetaImage[xyz];
+                    den[ANG] += mems[c][xyz]*mems[c][xyz];
+                }
+            }
+            for (int i=0;i<3;i++) {
+               if (den[i]>0.0) {
+                   centroids[c][i] = num[i]/den[i];
+               } else {
+                   centroids[c][i] = 0.0f;
+               }
+            }
+        }
+        if (verbose) {
+            for (int i=0;i<3;i++) {
+                System.out.print("centroids: ("+centroids[0][i]);
+                for (int c=1;c<nc;c++) System.out.print(", "+centroids[c][i]);
+                System.out.print(")\n");
+            }
+		} 
+		return;
+    }
+	
+	
+	private void computeScales(float[][] centroids) {
+	    float[] dist = new float[3];
+        float den = 0.0f;
+        
+        for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
+	        int xyz = x+nx*y;
+            if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
+                for (int c=0;c<nc;c++) {
+                    
+                    dist[DIA] += (diameterImage[xyz]-centroids[c][DIA])*(diameterImage[xyz]-centroids[c][DIA]);
+                    dist[LEN] += (lengthImage[xyz]-centroids[c][LEN])*(lengthImage[xyz]-centroids[c][LEN]);
+                    dist[ANG] += (thetaImage[xyz]-centroids[c][ANG])*(thetaImage[xyz]-centroids[c][ANG]);
+                    
+                    den++;
+                }
+            }
+        }
+        if (den>1.0f) {
+            diaSc = (float)FastMath.sqrt(dist[DIA]/(den-1.0f));
+            lenSc = (float)FastMath.sqrt(dist[LEN]/(den-1.0f));
+            angSc = (float)FastMath.sqrt(dist[ANG]/(den-1.0f));
+        }
+        if (verbose) {
+            System.out.print("scales: ("+diaSc+", "+lenSc+", "+angSc+")\n");
+		} 
+        return;
+    }
 
 	private void computeParcellationSurfaces(float smooth, float scale) {
 				
