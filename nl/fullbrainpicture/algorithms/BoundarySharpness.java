@@ -26,6 +26,7 @@ public class BoundarySharpness {
 	private float noise;
 	private int iterations=10;
 	private int nngb = 26;
+	private boolean signed=false;
 
 	private float[] parcelImage;
 	private float[] boundariesImage;
@@ -1029,6 +1030,20 @@ public class BoundarySharpness {
                                     - 0.5*incount[ngblb-1]/Numerics.max(1.0,(incount[label-1]+incount[ngblb-1]))
                                         *FastMath.log(noise[ngblb-1]*noise[ngblb-1]);
                     boundariesImage[xyz] = (float)FastMath.sqrt(jsdiv*FastMath.log(2.0)/2.0);
+                }
+            }
+        }
+        
+        // make lower intensities negative
+        if (signed) {
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcel[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (interior[label-1]<interior[ngblb-1]) {
+                    if (cnrImage[xyz]>0.0f) cnrImage[xyz] = -cnrImage[xyz];
+                    if (sharpnessImage[xyz]>0.0f) sharpnessImage[xyz] = -sharpnessImage[xyz];
+                    if (boundariesImage[xyz]>0.0f) boundariesImage[xyz] = -boundariesImage[xyz];
                 }
             }
         }
