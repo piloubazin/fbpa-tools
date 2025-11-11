@@ -74,6 +74,7 @@ public class BoundarySharpness {
 	public final void setScalingFactor(float val) { scaling = val; }
 	public final void setNoiseLevel(float val) { noise = val; }
 	public final void setIterations(int val) { iterations = val; }
+    public final void setSignedBoundaries(boolean val) { signed = val; }
 	
 	// create outputs
 	public final float[] getParcelImage() { return parcelImage; }
