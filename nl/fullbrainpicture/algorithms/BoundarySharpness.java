@@ -1037,6 +1037,7 @@ public class BoundarySharpness {
         
         // make lower intensities negative
         if (signed) {
+            System.out.println("changing boundary sign");
             for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
                 int label = parcel[xyz];
                 int ngblb = neighbor[xyz];
@@ -1385,7 +1386,23 @@ public class BoundarySharpness {
                 }
             }
         }
+
                 
+        // make lower intensities negative
+        if (signed) {
+            System.out.println("changing boundary sign");
+            for (int xyz=0;xyz<nxyz;xyz++) if (parcelImage[xyz]>0 && neighbor[xyz]>0) {
+                int label = parcel[xyz];
+                int ngblb = neighbor[xyz];
+                
+                if (interior[label-1]<interior[ngblb-1]) {
+                    if (cnrImage[xyz]>0.0f) cnrImage[xyz] = -cnrImage[xyz];
+                    if (sharpnessImage[xyz]>0.0f) sharpnessImage[xyz] = -sharpnessImage[xyz];
+                    if (boundariesImage[xyz]>0.0f) boundariesImage[xyz] = -boundariesImage[xyz];
+                }
+            }
+        }
+
 	    return;
 	}
 
