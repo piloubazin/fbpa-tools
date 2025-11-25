@@ -258,7 +258,7 @@ public class LinearFiberFiltering {
                     double gax = FastMath.cos(theta/180.0*FastMath.PI);
                     double gay = FastMath.sin(theta/180.0*FastMath.PI);
                     
-                    theta = 180.0/FastMath.PI*FastMath.acos(Numerics.abs(gax*gpx+gay*gpy)/np);
+                    theta = 180.0/FastMath.PI*FastMath.acos(Numerics.bounded(Numerics.abs(gax*gpx+gay*gpy)/np,-1.0,1.0));
                 }
                 thetaImage[xyz] = (float)theta;
             }
