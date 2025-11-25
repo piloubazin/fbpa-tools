@@ -179,7 +179,7 @@ public class LinearFiberFiltering {
             
             computeScales(centroids);
             
-            float[][] mems = new float[nxyz][nc];
+            float[][] mems = new float[nc][nxyz];
             computeMemberships(mems, centroids);
             
             float distance = 0.0f;
