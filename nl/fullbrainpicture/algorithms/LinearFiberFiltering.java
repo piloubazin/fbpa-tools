@@ -175,7 +175,7 @@ public class LinearFiberFiltering {
                 nlabel = ObjectLabeling.countLabels(parcellationImage, nx, ny, nz)-1;
             }
             
-            float[][[]] centroids = new float[nlabel][nc][3];
+            float[][][] centroids = new float[nlabel][nc][3];
             // simple init: factor of the scales
             for (int l=0;l<nlabel;l++) for (int c=0;c<nc;c++) {
                 centroids[l][c][DIA] = (c+1.0f)*diaSc;
