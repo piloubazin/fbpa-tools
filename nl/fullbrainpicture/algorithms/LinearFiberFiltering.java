@@ -26,6 +26,7 @@ public class LinearFiberFiltering {
 	private float[] sizes;
 	
 	private int nc=0;
+	private int nlabel=1;
 	
 	private float smooth=1.0f;
 	private float scale=10.0f;
@@ -169,12 +170,17 @@ public class LinearFiberFiltering {
             lenSc = 5.0f;
             angSc = 30.0f;
             
-            float[][] centroids = new float[nc][3];
+            // find clusters per region, if given a parcellation
+            if (parcellationImage!=null) {
+                nlabel = ObjectLabeling.countLabels(parcellationImage, nx, ny, nz)-1;
+            }
+            
+            float[][] centroids = new float[nlabel][nc][3];
             // simple init: factor of the scales
-            for (int c=0;c<nc;c++) {
-                centroids[c][DIA] = (c+1.0f)*diaSc;
-                centroids[c][LEN] = (c+1.0f)*lenSc;
-                centroids[c][ANG] = (c+1.0f)*angSc;
+            for (int l=0;l<nlabel;l++) for (int c=0;c<nc;c++) {
+                centroids[l][c][DIA] = (c+1.0f)*diaSc;
+                centroids[l][c][LEN] = (c+1.0f)*lenSc;
+                centroids[l][c][ANG] = (c+1.0f)*angSc;
             }
             
             computeScales(centroids);
@@ -189,7 +195,7 @@ public class LinearFiberFiltering {
             boolean stop = false;
             if (Niterations >= maxIter) stop = true;
             while (!stop) {
-                if (verbose) System.out.print("iteration " + Niterations + " (max: " + distance + ") ");
+                if (verbose) System.out.print("iteration " + Niterations + " (max: " + distance + ") \n");
 			
                 // update centroids
                 computeCentroids(mems, centroids);
@@ -266,7 +272,7 @@ public class LinearFiberFiltering {
 
 	}
 	
-	private float computeMemberships(float[][] mems, float[][] centroids) {
+	private float computeMemberships(float[][] mems, float[][][] centroids) {
 	    float distance,dist;
         float den,num;
         float neighbors, ngb;
@@ -279,6 +285,7 @@ public class LinearFiberFiltering {
 	        int xyz = x+nx*y;
             if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
                 den = 0.0f;
+                int lb = parcellationImage[xyz]-1;
                 for (int c=0;c<nc;c++) {
                     prev[c] = mems[c][xyz];
                 }
@@ -286,9 +293,9 @@ public class LinearFiberFiltering {
                 for (int c=0;c<nc;c++) {
                     // data term
                     num = 0.0f;
-                    num += (diameterImage[xyz]-centroids[c][DIA])*(diameterImage[xyz]-centroids[c][DIA])/(diaSc*diaSc);
-                    num += (lengthImage[xyz]-centroids[c][LEN])*(lengthImage[xyz]-centroids[c][LEN])/(lenSc*lenSc);
-                    num += (thetaImage[xyz]-centroids[c][ANG])*(thetaImage[xyz]-centroids[c][ANG])/(angSc*angSc);
+                    num += (diameterImage[xyz]-centroids[lb][c][DIA])*(diameterImage[xyz]-centroids[lb][c][DIA])/(diaSc*diaSc);
+                    num += (lengthImage[xyz]-centroids[lb][c][LEN])*(lengthImage[xyz]-centroids[lb][c][LEN])/(lenSc*lenSc);
+                    num += (thetaImage[xyz]-centroids[lb][c][ANG])*(thetaImage[xyz]-centroids[lb][c][ANG])/(angSc*angSc);
                     
                     // no spatial smoothing: doesn't make much sense here
 
@@ -313,56 +320,61 @@ public class LinearFiberFiltering {
         return distance;
     }
     
-    private void computeCentroids(float[][] mems, float[][] centroids) {
-        float[] num = new float[3];
-        float[] den = new float[3];
+    private void computeCentroids(float[][] mems, float[][][] centroids) {
+        float[][] num = new float[nlabel][3];
+        float[][] den = new float[nlable][3];
         
         for (int c=0;c<nc;c++) {
-            for (int i=0;i<3;i++) {
-                num[i] = 0.0f;
-                den[i] = 0.0f;
+            for (l=0;l<nlabel;l++) for (int i=0;i<3;i++) {
+                num[l][i] = 0.0f;
+                den[l][i] = 0.0f;
             }
             for (int xyz=0;xyz<nxyz;xyz++) {
                 if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
-                    num[DIA] += mems[c][xyz]*mems[c][xyz]*diameterImage[xyz];
-                    den[DIA] += mems[c][xyz]*mems[c][xyz];
-                    num[LEN] += mems[c][xyz]*mems[c][xyz]*lengthImage[xyz];
-                    den[LEN] += mems[c][xyz]*mems[c][xyz];
-                    num[ANG] += mems[c][xyz]*mems[c][xyz]*thetaImage[xyz];
-                    den[ANG] += mems[c][xyz]*mems[c][xyz];
+                    int lb = parcellationImage[xyz]-1;
+                    num[lb][DIA] += mems[c][xyz]*mems[c][xyz]*diameterImage[xyz];
+                    den[lb][DIA] += mems[c][xyz]*mems[c][xyz];
+                    num[lb][LEN] += mems[c][xyz]*mems[c][xyz]*lengthImage[xyz];
+                    den[lb][LEN] += mems[c][xyz]*mems[c][xyz];
+                    num[lb][ANG] += mems[c][xyz]*mems[c][xyz]*thetaImage[xyz];
+                    den[lb][ANG] += mems[c][xyz]*mems[c][xyz];
                 }
             }
-            for (int i=0;i<3;i++) {
-               if (den[i]>0.0) {
-                   centroids[c][i] = num[i]/den[i];
+            for (l=0;l<nlabel;l++) for (int i=0;i<3;i++) {
+               if (den[l][i]>0.0) {
+                   centroids[l][c][i] = num[l][i]/den[l][i];
                } else {
-                   centroids[c][i] = 0.0f;
+                   centroids[l][c][i] = 0.0f;
                }
             }
         }
         if (verbose) {
-            for (int i=0;i<3;i++) {
-                System.out.print("centroids: ("+centroids[0][i]);
-                for (int c=1;c<nc;c++) System.out.print(", "+centroids[c][i]);
-                System.out.print(")\n");
+            for (l=0;l<nlabel;l++) {
+                System.out.println("label: "+l);
+                for (int i=0;i<3;i++) {
+                    System.out.print(" centroids: ("+centroids[l][0][i]);
+                    for (int c=1;c<nc;c++) System.out.print(", "+centroids[l][c][i]);
+                    System.out.print(")\n");
+                }
             }
 		} 
 		return;
     }
 	
 	
-	private void computeScales(float[][] centroids) {
+	private void computeScales(float[][][] centroids) {
 	    float[] dist = new float[3];
         float den = 0.0f;
         
         for (int x=1;x<nx-1;x++) for (int y=1;y<ny-1;y++) {
 	        int xyz = x+nx*y;
             if (pvImage[xyz]>0 && diameterImage[xyz]>0 && lengthImage[xyz]>0 && parcellationImage[xyz]>0) {
+                int lb = parcellationImage[xyz]-1;
                 for (int c=0;c<nc;c++) {
                     
-                    dist[DIA] += (diameterImage[xyz]-centroids[c][DIA])*(diameterImage[xyz]-centroids[c][DIA]);
-                    dist[LEN] += (lengthImage[xyz]-centroids[c][LEN])*(lengthImage[xyz]-centroids[c][LEN]);
-                    dist[ANG] += (thetaImage[xyz]-centroids[c][ANG])*(thetaImage[xyz]-centroids[c][ANG]);
+                    dist[DIA] += (diameterImage[xyz]-centroids[lb][c][DIA])*(diameterImage[xyz]-centroids[lb][c][DIA]);
+                    dist[LEN] += (lengthImage[xyz]-centroids[lb][c][LEN])*(lengthImage[xyz]-centroids[lb][c][LEN]);
+                    dist[ANG] += (thetaImage[xyz]-centroids[lb][c][ANG])*(thetaImage[xyz]-centroids[lb][c][ANG]);
                     
                     den++;
                 }
