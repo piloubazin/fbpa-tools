@@ -175,7 +175,7 @@ public class LinearFiberFiltering {
                 nlabel = ObjectLabeling.countLabels(parcellationImage, nx, ny, nz)-1;
             }
             
-            float[][] centroids = new float[nlabel][nc][3];
+            float[][[]] centroids = new float[nlabel][nc][3];
             // simple init: factor of the scales
             for (int l=0;l<nlabel;l++) for (int c=0;c<nc;c++) {
                 centroids[l][c][DIA] = (c+1.0f)*diaSc;
@@ -322,10 +322,10 @@ public class LinearFiberFiltering {
     
     private void computeCentroids(float[][] mems, float[][][] centroids) {
         float[][] num = new float[nlabel][3];
-        float[][] den = new float[nlable][3];
+        float[][] den = new float[nlabel][3];
         
         for (int c=0;c<nc;c++) {
-            for (l=0;l<nlabel;l++) for (int i=0;i<3;i++) {
+            for (int l=0;l<nlabel;l++) for (int i=0;i<3;i++) {
                 num[l][i] = 0.0f;
                 den[l][i] = 0.0f;
             }
@@ -340,7 +340,7 @@ public class LinearFiberFiltering {
                     den[lb][ANG] += mems[c][xyz]*mems[c][xyz];
                 }
             }
-            for (l=0;l<nlabel;l++) for (int i=0;i<3;i++) {
+            for (int l=0;l<nlabel;l++) for (int i=0;i<3;i++) {
                if (den[l][i]>0.0) {
                    centroids[l][c][i] = num[l][i]/den[l][i];
                } else {
@@ -349,7 +349,7 @@ public class LinearFiberFiltering {
             }
         }
         if (verbose) {
-            for (l=0;l<nlabel;l++) {
+            for (int l=0;l<nlabel;l++) {
                 System.out.println("label: "+l);
                 for (int i=0;i<3;i++) {
                     System.out.print(" centroids: ("+centroids[l][0][i]);
