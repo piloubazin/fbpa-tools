@@ -76,16 +76,36 @@ public class SpectralVoxelMapping {
 	    }
 	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
 	    
+	    // embedding dimensions, adding smoothing borders if needed
+	    boolean doSmooth=false;
+	    for (int d=0;d<ndims;d++) if (smooth[d]>0) doSmooth=true;
+	    
+	    int ox=0, oy=0, oz=0, ot=0;
+	    if (doSmooth) {
+	        ox = Numerics.ceil(smooth[0]);
+	        if (ndims>1) oy = Numerics.ceil(smooth[1]);
+	        if (ndims>2) oz = Numerics.ceil(smooth[2]);
+            if (ndims>3) ot = Numerics.ceil(smooth[3]);
+        }
+	    int ex = nbins[0]+2*ox;
+	    int ey = 0;
+	    if (ndims>1) ey=nbins[1]+2*oy;
+	    int ez = 0;
+	    if (ndims>2) ez=nbins[2]+2*oz;
+	    int et = 0;
+	    if (ndims>3) et=nbins[3]+2*ot;
+	    
+	    
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        int bin=0;
 	        for (int d=0;d<ndims;d++) {
 	            int n=nbins[d]-1;
 	            if (imgEmbedding[xyz+d*nxyz]<cmax)
 	                 n = Numerics.floor(nbins[d]*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
-                if (d==0) bin += n;
-                if (d==1) bin += n*nbins[0];
-                if (d==2) bin += n*nbins[0]*nbins[1];
-                if (d==3) bin += n*nbins[0]*nbins[1]*nbins[2];
+                if (d==0) bin += n+ox;
+                if (d==1) bin += (n+oy)*ex;
+                if (d==2) bin += (n+oz)*ex*ey;
+                if (d==3) bin += (n+ot)*ex*ey*ez;
 	        }
 	        embeddedImage[bin] += inputImage[xyz];
 	        count[bin]++;
@@ -94,9 +114,6 @@ public class SpectralVoxelMapping {
 	    for (int b=0;b<ntotal;b++) if (count[b]>0) {
 	        embeddedImage[b] /= count[b];
 	    }
-	    
-	    boolean doSmooth=false;
-	    for (int d=0;d<ndims;d++) if (smooth[d]>0) doSmooth=true;
 	    
         if (doSmooth) {
             // smoothing, if needed
