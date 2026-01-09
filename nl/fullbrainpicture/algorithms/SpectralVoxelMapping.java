@@ -27,6 +27,8 @@ public class SpectralVoxelMapping {
     private int nx, ny, nz, nxyz;
 	private float rx, ry, rz;
 
+	private int ex, ey, ez, et;
+	
 	private int ndims = 3;
 	private int[] nbins = null;
 	private float[] smooth = null;
@@ -57,6 +59,12 @@ public class SpectralVoxelMapping {
 	// create outputs
 	public final float[] 	getEmbeddedImage() { return embeddedImage; }
 	
+	public final int[] getEmbeddingDims() { 
+	    if (ndims==1) return new int[] {ex}; 
+	    else if (ndims==2) return new int[] {ex,ey}; 
+	    else if (ndims==3) return new int[] {ex,ey,ez}; 
+	    else return new int[] {ex,ey,ez,et}; 
+	} 
 
 	public final void execute() {
 	    
@@ -71,12 +79,12 @@ public class SpectralVoxelMapping {
 	        if (ndims>2) oz = Numerics.ceil(smooth[2]);
             if (ndims>3) ot = Numerics.ceil(smooth[3]);
         }
-	    int ex = nbins[0]+2*ox;
-	    int ey = 0;
+	    ex = nbins[0]+2*ox;
+	    ey = 0;
 	    if (ndims>1) ey=nbins[1]+2*oy;
-	    int ez = 0;
+	    ez = 0;
 	    if (ndims>2) ez=nbins[2]+2*oz;
-	    int et = 0;
+	    et = 0;
 	    if (ndims>3) et=nbins[3]+2*ot;
 
 	    int ntotal = ex;
