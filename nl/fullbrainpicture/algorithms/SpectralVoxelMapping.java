@@ -60,22 +60,6 @@ public class SpectralVoxelMapping {
 
 	public final void execute() {
 	    
-	    int ntotal = 1;
-	    for (int d=0;d<ndims;d++) ntotal *= nbins[d];
-	    
-	    // create the output image
-	    embeddedImage = new float[ntotal];
-	    float[] count = new float[ntotal];
-	    
-	    // compute coordinate bounds (centered on zero)
-	    float cmin = 1e9f;
-	    float cmax = -1e9f;
-	    for (int d=0;d<ndims;d++) for (int xyz=0;xyz<nxyz;xyz++) {
-	        if (imgEmbedding[xyz+d*nxyz]<cmin) cmin = imgEmbedding[xyz+d*nxyz];
-	        if (imgEmbedding[xyz+d*nxyz]>cmax) cmax = imgEmbedding[xyz+d*nxyz];
-	    }
-	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
-	    
 	    // embedding dimensions, adding smoothing borders if needed
 	    boolean doSmooth=false;
 	    for (int d=0;d<ndims;d++) if (smooth[d]>0) doSmooth=true;
@@ -94,15 +78,32 @@ public class SpectralVoxelMapping {
 	    if (ndims>2) ez=nbins[2]+2*oz;
 	    int et = 0;
 	    if (ndims>3) et=nbins[3]+2*ot;
+
+	    int ntotal = ex;
+	    if (ndims>1) ntotal *= ey;
+	    if (ndims>2) ntotal *= ez;
+	    if (ndims>3) ntotal *= et;
 	    
+	    // create the output image
+	    embeddedImage = new float[ntotal];
+	    float[] count = new float[ntotal];
 	    
+	    // compute coordinate bounds (centered on zero)
+	    float cmin = 1e9f;
+	    float cmax = -1e9f;
+	    for (int d=0;d<ndims;d++) for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+d*nxyz]<cmin) cmin = imgEmbedding[xyz+d*nxyz];
+	        if (imgEmbedding[xyz+d*nxyz]>cmax) cmax = imgEmbedding[xyz+d*nxyz];
+	    }
+	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
+	    	    
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        int bin=0;
 	        for (int d=0;d<ndims;d++) {
 	            int n=nbins[d]-1;
 	            if (imgEmbedding[xyz+d*nxyz]<cmax)
 	                 n = Numerics.floor(nbins[d]*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
-                if (d==0) bin += n+ox;
+                if (d==0) bin += (n+ox);
                 if (d==1) bin += (n+oy)*ex;
                 if (d==2) bin += (n+oz)*ex*ey;
                 if (d==3) bin += (n+ot)*ex*ey*ez;
@@ -119,13 +120,13 @@ public class SpectralVoxelMapping {
             // smoothing, if needed
             if (ndims==2) {
                 float[][] kernel = ImageFilters.separableGaussianKernel2D(smooth[0],smooth[1]);
-                embeddedImage = ImageFilters.separableConvolution2D(embeddedImage, nbins[0], nbins[1], kernel);
+                embeddedImage = ImageFilters.separableConvolution2D(embeddedImage, ex, ey, kernel);
             } else if (ndims==3) {
                 float[][] kernel = ImageFilters.separableGaussianKernel3D(smooth[0],smooth[1],smooth[2]);
-                embeddedImage = ImageFilters.separableConvolution3D(embeddedImage, nbins[0], nbins[1], nbins[2], kernel);
+                embeddedImage = ImageFilters.separableConvolution3D(embeddedImage, ex, ey, ez, kernel);
             } else if (ndims==4) {
                 float[][] kernel = ImageFilters.separableGaussianKernel4D(smooth[0],smooth[1],smooth[2],smooth[3]);
-                embeddedImage = ImageFilters.separableConvolution4D(embeddedImage, nbins[0], nbins[1], nbins[2], nbins[3], kernel);
+                embeddedImage = ImageFilters.separableConvolution4D(embeddedImage, ex, ey, ez, et, kernel);
             }
                 
 	    }
