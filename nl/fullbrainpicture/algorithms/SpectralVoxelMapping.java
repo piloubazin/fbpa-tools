@@ -74,10 +74,10 @@ public class SpectralVoxelMapping {
 	    
 	    int ox=0, oy=0, oz=0, ot=0;
 	    if (doSmooth) {
-	        ox = Numerics.ceil(smooth[0]);
-	        if (ndims>1) oy = Numerics.ceil(smooth[1]);
-	        if (ndims>2) oz = Numerics.ceil(smooth[2]);
-            if (ndims>3) ot = Numerics.ceil(smooth[3]);
+	        ox = Numerics.ceil(2.0f*smooth[0]);
+	        if (ndims>1) oy = Numerics.ceil(2.0f*smooth[1]);
+	        if (ndims>2) oz = Numerics.ceil(2.0f*smooth[2]);
+            if (ndims>3) ot = Numerics.ceil(2.0f*smooth[3]);
         }
 	    ex = nbins[0]+2*ox;
 	    ey = 0;
