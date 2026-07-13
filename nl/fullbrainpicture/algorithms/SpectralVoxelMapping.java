@@ -1,4 +1,4 @@
-package nl.fullbrainpicture.algorithms;
+ package nl.fullbrainpicture.algorithms;
 
 import nl.fullbrainpicture.utilities.*;
 import nl.fullbrainpicture.structures.*;
@@ -141,5 +141,108 @@ public class SpectralVoxelMapping {
 
 	    return;
      }
+
+	public final void interpolateInverseDistance2D(float p, float maxdist) {
+	    
+	    // embedding dimensions, no need for smoothing borders
+	    ex = nbins[0];
+	    ey = nbins[1];
+	    
+	    int ntotal = ex*ey;
+	    
+	    // compute coordinate bounds (centered on zero)
+	    float cmin = 1e9f;
+	    float cmax = -1e9f;
+	    for (int d=0;d<ndims;d++) for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+d*nxyz]<cmin) cmin = imgEmbedding[xyz+d*nxyz];
+	        if (imgEmbedding[xyz+d*nxyz]>cmax) cmax = imgEmbedding[xyz+d*nxyz];
+	    }
+	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
+
+	    // create the output image
+	    embeddedImage = new float[ntotal];
+	    
+	    double[] vals = new double[ntotal];
+	    double[] dists = new double[ntotal];
+	    
+	    double maxd = FastMath.pow(maxdist, p);
+	    for (int x=0;x<ex;x++) for (int y=0;y<ey;y++) {
+	        
+	        float px = x/(ex-1.0f);
+	        float py = y/(ey-1.0f);
+	        
+	        for (int xyz=0;xyz<nxyz;xyz++) {
+	            
+	            float ax = (imgEmbedding[xyz+0*nxyz]-cmin)/(cmax-cmin);
+	            float ay = (imgEmbedding[xyz+1*nxyz]-cmin)/(cmax-cmin);
+	            
+	            double dist = FastMath.pow( (ax-px)*(ax-px) + (ay-py)*(ay-py), p/2.0);
+	            
+	            if (dist<maxd) {
+                    dists[x+ex*y] += dist;
+                    vals[x+ex*y] += dist*inputImage[xyz];
+                }
+	        }
+	    }
+	    
+	    for (int b=0;b<ntotal;b++) {
+	        embeddedImage[b] =(float)(vals[b]/dists[b]);
+	    }
+	    
+	    return;
+    }
+
+	public final void interpolateInverseDistance3D(float p, float maxdist) {
+	    
+	    // embedding dimensions, no need for smoothing borders
+	    ex = nbins[0];
+	    ey = nbins[1];
+	    ez = nbins[2];
+
+	    int ntotal = ex*ey*ez;
+	    
+	    // compute coordinate bounds (centered on zero)
+	    float cmin = 1e9f;
+	    float cmax = -1e9f;
+	    for (int d=0;d<ndims;d++) for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+d*nxyz]<cmin) cmin = imgEmbedding[xyz+d*nxyz];
+	        if (imgEmbedding[xyz+d*nxyz]>cmax) cmax = imgEmbedding[xyz+d*nxyz];
+	    }
+	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
+
+	    // create the output image
+	    embeddedImage = new float[ntotal];
+	    
+	    double[] vals = new double[ntotal];
+	    double[] dists = new double[ntotal];
+	    
+	    double maxd = FastMath.pow(maxdist, p);
+	    for (int x=0;x<ex;x++) for (int y=0;y<ey;y++) for (int z=0;z<ez;z++) {
+	        
+	        float px = x/(ex-1.0f);
+	        float py = y/(ey-1.0f);
+	        float pz = z/(ez-1.0f);
+	        
+	        for (int xyz=0;xyz<nxyz;xyz++) {
+	            
+	            float ax = (imgEmbedding[xyz+0*nxyz]-cmin)/(cmax-cmin);
+	            float ay = (imgEmbedding[xyz+1*nxyz]-cmin)/(cmax-cmin);
+	            float az = (imgEmbedding[xyz+2*nxyz]-cmin)/(cmax-cmin);
+	            
+	            double dist = FastMath.pow( (ax-px)*(ax-px) + (ay-py)*(ay-py) + (az-pz)*(az-pz), p/2.0);
+	            
+	            if (dist<maxd) {
+                    dists[x+ex*y+ex*ey*z] += dist;
+                    vals[x+ex*y+ex*ey*z] += dist*inputImage[xyz];
+                }
+	        }
+	    }
+	    
+	    for (int b=0;b<ntotal;b++) {
+	        embeddedImage[b] =(float)(vals[b]/dists[b]);
+	    }
+	    
+	    return;
+    }
 
 }
