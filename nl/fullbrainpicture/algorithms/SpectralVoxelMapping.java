@@ -164,7 +164,7 @@ public class SpectralVoxelMapping {
 	    
 	    double[] vals = new double[ntotal];
 	    double[] dists = new double[ntotal];
-	    
+	    /* way too slow!
 	    double maxd = FastMath.pow(maxdist, p);
 	    for (int x=0;x<ex;x++) for (int y=0;y<ey;y++) {
 	        
@@ -183,7 +183,34 @@ public class SpectralVoxelMapping {
                     vals[x+ex*y] += dist*inputImage[xyz];
                 }
 	        }
-	    }
+	    }*/
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0) {
+	            
+                float ax = (imgEmbedding[xyz+0*nxyz]-cmin)/(cmax-cmin);
+                float ay = (imgEmbedding[xyz+1*nxyz]-cmin)/(cmax-cmin);
+                
+                int x0 = Numerics.max(0, Numerics.floor( (ex-1.0f)*(ax-maxdist) ));
+                int xN = Numerics.min(ex, Numerics.ceil( (ex-1.0f)*(ax+maxdist)+1.0f ));
+                
+                int y0 = Numerics.max(0, Numerics.floor( (ey-1.0f)*(ay-maxdist) ));
+                int yN = Numerics.min(ey, Numerics.ceil( (ey-1.0f)*(ay+maxdist)+1.0f ));
+                
+                for (int x=x0;x<xN;x++) for (int y=y0;y<yN;y++) {
+                
+                    float px = x/(ex-1.0f);
+                    float py = y/(ey-1.0f);
+                
+                    double dist = (ax-px)*(ax-px) + (ay-py)*(ay-py);
+                    
+                    if (dist>maxdist*maxdist) {
+                        dist = FastMath.pow(dist, p/2.0);
+                        dists[x+ex*y] += dist;
+                        vals[x+ex*y] += dist*inputImage[xyz];
+                    }
+                }
+            }
+        }
 	    
 	    for (int b=0;b<ntotal;b++) {
 	        embeddedImage[b] =(float)(vals[b]/dists[b]);
