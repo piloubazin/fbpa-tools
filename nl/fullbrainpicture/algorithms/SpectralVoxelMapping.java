@@ -212,7 +212,7 @@ public class SpectralVoxelMapping {
             }
         }
 	    
-	    for (int b=0;b<ntotal;b++) {
+	    for (int b=0;b<ntotal;b++) if (dists[b]>0) {
 	        embeddedImage[b] =(float)(vals[b]/dists[b]);
 	    }
 	    
