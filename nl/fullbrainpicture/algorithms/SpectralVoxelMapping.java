@@ -204,7 +204,7 @@ public class SpectralVoxelMapping {
                     double dist = (ax-px)*(ax-px) + (ay-py)*(ay-py);
                     
                     if (dist>maxdist*maxdist) {
-                        dist = FastMath.pow(dist, p/2.0);
+                        dist = FastMath.pow(dist, -p/2.0);
                         dists[x+ex*y] += dist;
                         vals[x+ex*y] += dist*inputImage[xyz];
                     }
