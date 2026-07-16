@@ -184,7 +184,8 @@ public class SpectralVoxelMapping {
                 }
 	        }
 	    }*/
-	    double offset = FastMath.pow(maxdist, -p);
+	    //double offset = FastMath.pow(maxdist, -p);
+	    double var = maxdist*maxdist/9.0;
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0) {
 	            
@@ -205,7 +206,8 @@ public class SpectralVoxelMapping {
                     double dist = (ax-px)*(ax-px) + (ay-py)*(ay-py);
                     
                     if (dist<maxdist*maxdist) {
-                        dist = FastMath.pow(dist, -p/2.0)-offset;
+                        //dist = FastMath.pow(dist, -p/2.0)-offset;
+                        dist = FastMath.exp(-0.5*dist/var);
                         dists[x+ex*y] += dist;
                         vals[x+ex*y] += dist*inputImage[xyz];
                     }
@@ -243,7 +245,7 @@ public class SpectralVoxelMapping {
 	    
 	    double[] vals = new double[ntotal];
 	    double[] dists = new double[ntotal];
-	    
+	    /* too slow
 	    double maxd = FastMath.pow(maxdist, p);
 	    for (int x=0;x<ex;x++) for (int y=0;y<ey;y++) for (int z=0;z<ez;z++) {
 	        
@@ -264,7 +266,41 @@ public class SpectralVoxelMapping {
                     vals[x+ex*y+ex*ey*z] += dist*inputImage[xyz];
                 }
 	        }
-	    }
+	    }*/
+	    double var = maxdist*maxdist/9.0;
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0 || imgEmbedding[xyz+2*nxyz]!=0) {
+	            
+                float ax = (imgEmbedding[xyz+0*nxyz]-cmin)/(cmax-cmin);
+                float ay = (imgEmbedding[xyz+1*nxyz]-cmin)/(cmax-cmin);
+                float az = (imgEmbedding[xyz+2*nxyz]-cmin)/(cmax-cmin);
+                
+                int x0 = Numerics.max(0, Numerics.floor( (ex-1.0f)*(ax-maxdist) ));
+                int xN = Numerics.min(ex, Numerics.ceil( (ex-1.0f)*(ax+maxdist)+1.0f ));
+                
+                int y0 = Numerics.max(0, Numerics.floor( (ey-1.0f)*(ay-maxdist) ));
+                int yN = Numerics.min(ey, Numerics.ceil( (ey-1.0f)*(ay+maxdist)+1.0f ));
+                
+                int z0 = Numerics.max(0, Numerics.floor( (ez-1.0f)*(az-maxdist) ));
+                int zN = Numerics.min(ez, Numerics.ceil( (ez-1.0f)*(az+maxdist)+1.0f ));
+                
+                for (int x=x0;x<xN;x++) for (int y=y0;y<yN;y++) for (int z=z0;z<zN;z++) {
+                
+                    float px = x/(ex-1.0f);
+                    float py = y/(ey-1.0f);
+                    float pz = z/(ez-1.0f);
+                
+                    double dist = (ax-px)*(ax-px) + (ay-py)*(ay-py) + (az-pz)*(az-pz);
+                    
+                    if (dist<maxdist*maxdist) {
+                        dist = FastMath.exp(-0.5*dist/var);
+                        dists[x+ex*y+ex*ey*z] += dist;
+                        vals[x+ex*y+ex*ey*z] += dist*inputImage[xyz];
+                    }
+                }
+            }
+        }
+	    
 	    
 	    for (int b=0;b<ntotal;b++) {
 	        embeddedImage[b] =(float)(vals[b]/dists[b]);
