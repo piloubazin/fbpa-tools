@@ -185,7 +185,7 @@ public class SpectralVoxelMapping {
 	        }
 	    }*/
 	    //double offset = FastMath.pow(maxdist, -p);
-	    double var = maxdist*maxdist/9.0;
+	    double var = maxdist*maxdist/(p*p);
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0) {
 	            
@@ -267,7 +267,7 @@ public class SpectralVoxelMapping {
                 }
 	        }
 	    }*/
-	    double var = maxdist*maxdist/9.0;
+	    double var = maxdist*maxdist/(p*p);
 	    for (int xyz=0;xyz<nxyz;xyz++) {
 	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0 || imgEmbedding[xyz+2*nxyz]!=0) {
 	            
