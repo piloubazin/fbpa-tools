@@ -106,18 +106,22 @@ public class SpectralVoxelMapping {
 	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
 	    	    
 	    for (int xyz=0;xyz<nxyz;xyz++) {
-	        int bin=0;
-	        for (int d=0;d<ndims;d++) {
-	            int n=nbins[d]-1;
-	            if (imgEmbedding[xyz+d*nxyz]<cmax)
-	                 n = Numerics.floor(nbins[d]*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
-                if (d==0) bin += (n+ox);
-                if (d==1) bin += (n+oy)*ex;
-                if (d==2) bin += (n+oz)*ex*ey;
-                if (d==3) bin += (n+ot)*ex*ey*ez;
-	        }
-	        embeddedImage[bin] += inputImage[xyz];
-	        count[bin]++;
+	        if (imgEmbedding[xyz+0*nxyz]!=0 || 
+	            (ndims>1 && imgEmbedding[xyz+1*nxyz]!=0) || 
+	            (ndims>2 && imgEmbedding[xyz+2*nxyz]!=0) ) {
+                int bin=0;
+                for (int d=0;d<ndims;d++) {
+                    int n=nbins[d]-1;
+                    if (imgEmbedding[xyz+d*nxyz]<cmax)
+                         n = Numerics.floor(nbins[d]*(imgEmbedding[xyz+d*nxyz]-cmin)/(cmax-cmin));
+                    if (d==0) bin += (n+ox);
+                    if (d==1) bin += (n+oy)*ex;
+                    if (d==2) bin += (n+oz)*ex*ey;
+                    if (d==3) bin += (n+ot)*ex*ey*ez;
+                }
+                embeddedImage[bin] += inputImage[xyz];
+                count[bin]++;
+            }
 	    }
 	        
 	    for (int b=0;b<ntotal;b++) if (count[b]>0) {
