@@ -221,6 +221,8 @@ public class SpectralVoxelMapping {
 	    
 	    for (int b=0;b<ntotal;b++) if (dists[b]>0.01) {
 	        embeddedImage[b] =(float)(vals[b]/dists[b]);
+	        embeddedImage[b] =(float)(dists[b]);
+	        
 	    }
 	    
 	    return;
@@ -308,6 +310,7 @@ public class SpectralVoxelMapping {
 	    
 	    for (int b=0;b<ntotal;b++) if (dists[b]>0.01) {
 	        embeddedImage[b] =(float)(vals[b]/dists[b]);
+	        embeddedImage[b] =(float)(dists[b]);
 	    }
 	    
 	    return;
