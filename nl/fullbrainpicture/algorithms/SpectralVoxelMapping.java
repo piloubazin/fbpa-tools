@@ -174,7 +174,7 @@ public class SpectralVoxelMapping {
 	    }
 	    boolean[] boundary = new boolean[nxyz];
 	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
-	        int xyz = x*nx*y+nx*ny*z;
+	        int xyz = x+nx*y+nx*ny*z;
 	        if (mask[xyz]) {
                 boundary[xyz] = false;
                 for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
@@ -282,7 +282,7 @@ public class SpectralVoxelMapping {
 	    }
 	    boolean[] boundary = new boolean[nxyz];
 	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
-	        int xyz = x*nx*y+nx*ny*z;
+	        int xyz = x+nx*y+nx*ny*z;
 	        if (mask[xyz]) {
                 boundary[xyz] = false;
                 for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
