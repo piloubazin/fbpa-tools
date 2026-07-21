@@ -163,6 +163,28 @@ public class SpectralVoxelMapping {
 	    }
 	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
 
+	    // find object boundary
+	    boolean[] mask = new boolean[nxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0) {
+	            mask[xyz] = true;
+	        } else {
+	            mask[xyz] = false;
+	        }
+	    }
+	    boolean[] boundary = new boolean[nxyz];
+	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+	        int xyz = x*nx*y+nx*ny*z;
+	        if (mask[xyz]) {
+                boundary[xyz] = false;
+                for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
+                    if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny && z+k>=0 && z+k<nz) {
+                        if (!mask[xyz]) boundary[xyz]=true;
+                    }
+                }
+            }
+	    }
+
 	    // create the output image
 	    embeddedImage = new float[ntotal];
 	    
@@ -192,7 +214,8 @@ public class SpectralVoxelMapping {
 	    //double offset = FastMath.pow(maxdist, -p);
 	    double var = maxdist*maxdist/(p*p);
 	    for (int xyz=0;xyz<nxyz;xyz++) {
-	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0) {
+	        if (mask[xyz]) {
+	        //if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0) {
 	            
                 float ax = (imgEmbedding[xyz+0*nxyz]-cmin)/(cmax-cmin);
                 float ay = (imgEmbedding[xyz+1*nxyz]-cmin)/(cmax-cmin);
@@ -215,14 +238,16 @@ public class SpectralVoxelMapping {
                         dist = FastMath.exp(-0.5*dist/var);
                         dists[x+ex*y] += dist;
                         vals[x+ex*y] += dist*inputImage[xyz];
-                        counts[x+ex*y] = Numerics.max(counts[x+ex*y], dist);
+                        if (!boundary[xyz]) counts[x+ex*y] += dist;
                     }
                 }
             }
         }
 	    
-	    for (int b=0;b<ntotal;b++) if (counts[b]>0.1) {
-	        embeddedImage[b] =(float)(vals[b]/dists[b]);
+	    for (int b=0;b<ntotal;b++) if (dists[b]>0.0) {
+	        if (counts[b]/dists[b]>0.5) {	
+	            embeddedImage[b] =(float)(vals[b]/dists[b]);
+	        }
 	    }
 	    
 	    return;
@@ -246,6 +271,28 @@ public class SpectralVoxelMapping {
 	    }
 	    System.out.println("coordinates range: ["+cmin+", "+cmax+"]");
 
+	    // find object boundary
+	    boolean[] mask = new boolean[nxyz];
+	    for (int xyz=0;xyz<nxyz;xyz++) {
+	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0 || imgEmbedding[xyz+2*nxyz]!=0) {
+	            mask[xyz] = true;
+	        } else {
+	            mask[xyz] = false;
+	        }
+	    }
+	    boolean[] boundary = new boolean[nxyz];
+	    for (int x=0;x<nx;x++) for (int y=0;y<ny;y++) for (int z=0;z<nz;z++) {
+	        int xyz = x*nx*y+nx*ny*z;
+	        if (mask[xyz]) {
+                boundary[xyz] = false;
+                for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
+                    if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny && z+k>=0 && z+k<nz) {
+                        if (!mask[xyz]) boundary[xyz]=true;
+                    }
+                }
+            }
+	    }
+	    
 	    // create the output image
 	    embeddedImage = new float[ntotal];
 	    
@@ -276,7 +323,8 @@ public class SpectralVoxelMapping {
 	    }*/
 	    double var = maxdist*maxdist/(p*p);
 	    for (int xyz=0;xyz<nxyz;xyz++) {
-	        if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0 || imgEmbedding[xyz+2*nxyz]!=0) {
+	        if (mask[xyz]) {
+	        //if (imgEmbedding[xyz+0*nxyz]!=0 || imgEmbedding[xyz+1*nxyz]!=0 || imgEmbedding[xyz+2*nxyz]!=0) {
 	            
                 float ax = (imgEmbedding[xyz+0*nxyz]-cmin)/(cmax-cmin);
                 float ay = (imgEmbedding[xyz+1*nxyz]-cmin)/(cmax-cmin);
@@ -303,15 +351,17 @@ public class SpectralVoxelMapping {
                         dist = FastMath.exp(-0.5*dist/var);
                         dists[x+ex*y+ex*ey*z] += dist;
                         vals[x+ex*y+ex*ey*z] += dist*inputImage[xyz];
-                        counts[x+ex*y+ex*ey*z] = Numerics.max(counts[x+ex*y+ex*ey*z],dist);
+                        if (!boundary[xyz]) counts[x+ex*y+ex*ey*z] += dist;
                     }
                 }
             }
         }
 	    
 	    
-	    for (int b=0;b<ntotal;b++) if (counts[b]>0.1) {
-	        embeddedImage[b] =(float)(vals[b]/dists[b]);
+	    for (int b=0;b<ntotal;b++) if (dists[b]>0.0) {
+	        if (counts[b]/dists[b]>0.5) {	
+	            embeddedImage[b] =(float)(vals[b]/dists[b]);
+	        }
 	    }
 	    
 	    return;
