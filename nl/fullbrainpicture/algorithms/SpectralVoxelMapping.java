@@ -246,11 +246,11 @@ public class SpectralVoxelMapping {
             }
         }
 	    
-	    for (int b=0;b<ntotal;b++) if (dists[b]>0.0) {
-	        if (counts[b]/dists[b]>0.9) {	
+	    for (int b=0;b<ntotal;b++) if (dists[b]>0.01) {
+	        if (counts[b]/dists[b]>0.5) {	
 	            embeddedImage[b] =(float)(vals[b]/dists[b]);
 	        }
-	        embeddedImage[b] =(float)(counts[b]/dists[b]);
+	        //embeddedImage[b] =(float)(counts[b]/dists[b]);
 	    }
 	    
 	    return;
@@ -290,7 +290,7 @@ public class SpectralVoxelMapping {
                 boundary[xyz] = false;
                 for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
                     if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny && z+k>=0 && z+k<nz) {
-                        if (i*i+j*j+k*k==1) {
+                        if (i*i+j*j+k*k>0) {
                             if (!mask[xyz+i+nx*j+nx*ny*k]) boundary[xyz]=true;
                         }
                     }
@@ -363,11 +363,11 @@ public class SpectralVoxelMapping {
         }
 	    
 	    
-	    for (int b=0;b<ntotal;b++) if (dists[b]>0.0) {
-	        if (counts[b]/dists[b]>0.9) {	
+	    for (int b=0;b<ntotal;b++) if (dists[b]>0.01) {
+	        if (counts[b]/dists[b]>0.5) {	
 	            embeddedImage[b] =(float)(vals[b]/dists[b]);
 	        }
-	        embeddedImage[b] =(float)(counts[b]/dists[b]);
+	        //embeddedImage[b] =(float)(counts[b]/dists[b]);
 	    }
 	    
 	    return;
