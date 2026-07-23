@@ -248,6 +248,7 @@ public class SpectralVoxelMapping {
 	        if (counts[b]/dists[b]>0.9) {	
 	            embeddedImage[b] =(float)(vals[b]/dists[b]);
 	        }
+	        embeddedImage[b] =(float)(counts[b]/dists[b]);
 	    }
 	    
 	    return;
@@ -362,6 +363,7 @@ public class SpectralVoxelMapping {
 	        if (counts[b]/dists[b]>0.9) {	
 	            embeddedImage[b] =(float)(vals[b]/dists[b]);
 	        }
+	        embeddedImage[b] =(float)(counts[b]/dists[b]);
 	    }
 	    
 	    return;
