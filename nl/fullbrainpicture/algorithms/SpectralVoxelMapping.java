@@ -179,7 +179,7 @@ public class SpectralVoxelMapping {
                 boundary[xyz] = false;
                 for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
                     if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny && z+k>=0 && z+k<nz) {
-                        if (!mask[xyz]) boundary[xyz]=true;
+                        if (!mask[xyz+i+nx*j+nx*ny*k]) boundary[xyz]=true;
                     }
                 }
             }
@@ -288,7 +288,7 @@ public class SpectralVoxelMapping {
                 boundary[xyz] = false;
                 for (int i=-1;i<=1;i++) for (int j=-1;j<=1;j++) for (int k=-1;k<=1;k++) {
                     if (x+i>=0 && x+i<nx && y+j>=0 && y+j<ny && z+k>=0 && z+k<nz) {
-                        if (!mask[xyz]) boundary[xyz]=true;
+                        if (!mask[xyz+i+nx*j+nx*ny*k]) boundary[xyz]=true;
                     }
                 }
             }
